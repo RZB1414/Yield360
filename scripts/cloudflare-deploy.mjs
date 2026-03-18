@@ -78,14 +78,6 @@ async function main() {
     return;
   }
 
-  if (!process.env.CLOUDFLARE_API_TOKEN) {
-    throw new Error('Missing CLOUDFLARE_API_TOKEN in the root .env file.');
-  }
-
-  if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
-    throw new Error('Missing CLOUDFLARE_ACCOUNT_ID in the root .env file.');
-  }
-
   if (target === 'api-deploy') {
     await runCommand('wrangler', ['deploy'], path.join(repoRoot, 'apps', 'api'));
     return;

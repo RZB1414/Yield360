@@ -46,7 +46,9 @@ O `npm run dev` em `apps/web` liga-se por omissao ao worker publicado em Cloudfl
 - Frontend: `npm run deploy:web`.
 - API: `npm run deploy:api`.
 
-Os scripts de deploy leem sempre o `.env` da raiz antes de chamar o Wrangler. Assim, o token usado e o `CLOUDFLARE_ACCOUNT_ID` ficam alinhados com o projeto, sem depender da sessao autenticada local.
+Em Cloudflare, nao use `npx wrangler deploy` na raiz da monorepo. O Wrangler nao suporta autodeteccao de aplicacoes no root de um workspace npm. Para publicar o frontend, use `npm run deploy` (alias da raiz para `deploy:web`) ou execute o deploy a partir de `apps/web`.
+
+Os scripts de deploy leem o `.env` da raiz quando existir, para alinhar token, account ID e project name com o projeto. Se essas variaveis nao estiverem definidas, o Wrangler usa a autenticacao ja disponivel no ambiente atual.
 
 O `npm run build` da monorepo nao exige credenciais Cloudflare para a API. O passo `@yield-360/api:build` faz apenas um bundle local com `wrangler deploy --dry-run`, por isso funciona em CI do Cloudflare Pages sem `CLOUDFLARE_API_TOKEN`.
 
