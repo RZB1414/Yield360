@@ -1,0 +1,20 @@
+{
+  "name": "yield-360",
+  "private": true,
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "deploy:api": "npm run deploy --workspace @yield-360/api",
+    "deploy:web": "npm run deploy --workspace @yield-360/web",
+    "deploy:all": "npm run deploy:api && npm run deploy:web"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4"
+  }
+}
