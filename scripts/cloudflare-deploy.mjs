@@ -73,17 +73,17 @@ async function main() {
     throw new Error('Missing deploy target. Use api-build, api-deploy, or web-deploy.');
   }
 
+  if (target === 'api-build') {
+    await runCommand('wrangler', ['deploy', '--dry-run', '--outdir', 'dist'], path.join(repoRoot, 'apps', 'api'));
+    return;
+  }
+
   if (!process.env.CLOUDFLARE_API_TOKEN) {
     throw new Error('Missing CLOUDFLARE_API_TOKEN in the root .env file.');
   }
 
   if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
     throw new Error('Missing CLOUDFLARE_ACCOUNT_ID in the root .env file.');
-  }
-
-  if (target === 'api-build') {
-    await runCommand('wrangler', ['deploy', '--dry-run', '--outdir', 'dist'], path.join(repoRoot, 'apps', 'api'));
-    return;
   }
 
   if (target === 'api-deploy') {

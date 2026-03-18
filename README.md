@@ -48,4 +48,6 @@ O `npm run dev` em `apps/web` liga-se por omissao ao worker publicado em Cloudfl
 
 Os scripts de deploy leem sempre o `.env` da raiz antes de chamar o Wrangler. Assim, o token usado e o `CLOUDFLARE_ACCOUNT_ID` ficam alinhados com o projeto, sem depender da sessao autenticada local.
 
+O `npm run build` da monorepo nao exige credenciais Cloudflare para a API. O passo `@yield-360/api:build` faz apenas um bundle local com `wrangler deploy --dry-run`, por isso funciona em CI do Cloudflare Pages sem `CLOUDFLARE_API_TOKEN`.
+
 Para a API publicada funcionar com D1, o binding `DB` do Worker precisa apontar para uma base existente e o schema SQL precisa estar aplicado. Se a API responder com `503`, confirme o bloco `[[d1_databases]]` em `apps/api/wrangler.toml` e execute a migracao `migrations/0001_init.sql` na base remota.
