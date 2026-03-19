@@ -4,6 +4,7 @@ import { handleHealthRequest } from './routes/health.js';
 import {
   handleAnalyzePlanRequest,
   handleCreatePlanRequest,
+  handleDeletePlanRequest,
   handleGetPlanRequest,
   handleListPlansRequest,
   handleUpdatePlanRequest
@@ -61,6 +62,10 @@ async function routeRequest(request, env) {
 
   if (request.method === 'PUT' && planMatch) {
     return handleUpdatePlanRequest(request, env, planMatch[1]);
+  }
+
+  if (request.method === 'DELETE' && planMatch) {
+    return handleDeletePlanRequest(env, planMatch[1]);
   }
 
   return notFoundResponse();

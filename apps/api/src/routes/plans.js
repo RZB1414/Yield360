@@ -1,4 +1,4 @@
-import { createPlan, getPlanById, listPlans, updatePlan } from '../lib/db.js';
+import { createPlan, deletePlan, getPlanById, listPlans, updatePlan } from '../lib/db.js';
 import { jsonResponse } from '../lib/http.js';
 import { buildPlannerReport, normalizePlannerInput } from '../services/planner.service.js';
 
@@ -107,6 +107,23 @@ export async function handleUpdatePlanRequest(request, env, planId) {
       report,
       createdAt: existingPlan.createdAt,
       updatedAt: timestamp
+    }
+  });
+}
+
+export async function handleDeletePlanRequest(env, planId) {
+  const existingPlan = await getPlanById(env.DB, planId);
+
+  if (!existingPlan?.id) {
+    return jsonResponse({ message: 'Cenario nao encontrado.' }, 404);
+  }
+
+  await deletePlan(env.DB, planId);
+
+  return jsonResponse({
+    message: 'Cliente excluido com sucesso.',
+    data: {
+      planId
     }
   });
 }

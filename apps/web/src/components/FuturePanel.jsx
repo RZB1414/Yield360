@@ -2,11 +2,37 @@ import { AreaTrendChart } from './AreaTrendChart.jsx';
 import { SectionCard } from './SectionCard.jsx';
 import { formatCurrency, formatPercent } from '../lib/formatters.js';
 
-function statCard(label, value, backgroundClass, dark = false) {
+function statCard(label, value, tone = 'light', large = false) {
+  const tones = {
+    light: 'border-[#173d5d]/10 bg-white',
+    slate: 'border-[#173d5d]/12 bg-[#f5f8fc]',
+    success: 'border-[#6cae45]/20 bg-[#edf7e7]',
+    accent: 'border-[#355f9b]/18 bg-[#eaf1fb]',
+    dark: 'border-[#173d5d]/16 bg-[#173d5d] text-white'
+  };
+
   return (
-    <div className={`${backgroundClass} rounded-[22px] border-l-4 border-[#142d67] px-4 py-4`}>
-      <p className={`text-sm ${dark ? 'text-white/76' : 'text-[#17255c]'}`}>{label}</p>
-      <p className={`mt-3 font-display text-4xl ${dark ? 'text-white' : 'text-[#0d145a]'}`}>{value}</p>
+    <div className={`min-w-0 overflow-hidden rounded-[18px] border px-4 py-3 shadow-[0_12px_24px_rgba(23,61,93,0.06)] ${tones[tone] ?? tones.light}`}>
+      <p className={`text-xs leading-snug ${tone === 'dark' ? 'text-white/70' : 'text-slate/60'}`}>{label}</p>
+      <p className={`mt-2 break-words font-display leading-tight ${tone === 'dark' ? 'text-white' : 'text-[#173d5d]'} ${large ? 'text-xl md:text-2xl xl:text-[1.55rem]' : 'text-lg md:text-xl xl:text-[1.25rem]'}`}>{value}</p>
+    </div>
+  );
+}
+
+function frameClassName() {
+  return 'rounded-[24px] border border-[#173d5d]/10 bg-white/88 shadow-[0_18px_34px_rgba(23,61,93,0.08)]';
+}
+
+function introPanel(kicker, title, description) {
+  return (
+    <div className="rounded-[24px] border border-[#173d5d]/12 bg-[linear-gradient(135deg,#f7fbff_0%,#edf5fd_100%)] px-5 py-4 shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#355f9b]">{kicker}</p>
+          <p className="mt-1 text-xl font-semibold text-[#173d5d]">{title}</p>
+        </div>
+        <p className="text-sm text-slate/60">{description}</p>
+      </div>
     </div>
   );
 }
@@ -27,35 +53,61 @@ export function FuturePanel({ future }) {
       title="Fase de usufruto"
       description="Painel espelhado na planilha de futuro, com taxa real de juros, renda passiva potencial, receitas complementares e saldo patrimonial em perpetuidade."
     >
-      <div className="rounded-[30px] border border-[#1f4b89] bg-white p-6">
-        <p className="mb-5 text-2xl font-semibold text-[#17255c]">Fase de Usufruto</p>
-        <div className="grid gap-6 xl:grid-cols-[0.34fr_0.66fr]">
+      <div className="grid gap-4 rounded-[30px] border border-[#173d5d]/12 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-4 lg:p-5">
+        {introPanel('Aposentadoria e usufruto', 'Fase de usufruto', 'Leitura consolidada da renda passiva, receitas extras e gasto alvo')}
+
+        <div className="grid gap-4 xl:grid-cols-[0.42fr_0.58fr]">
           <div className="grid gap-4">
-            {statCard('Taxa de Juros real', formatPercent(future.perpetuityRate), 'bg-[#c9ecb5]')}
-            {statCard('RENDA PASSIVA POTENCIAL (PL)', formatCurrency(future.passivePortfolioIncome), 'bg-[#c9ecb5]')}
-            {statCard('INSS + Outras receitas', formatCurrency(future.externalMonthlyIncome), 'bg-[#355f9b] text-white', true)}
-            {statCard('RENDA PASSIVA POTENCIAL (PL + INSS)', formatCurrency(future.combinedMonthlyIncome), 'bg-[#dedede]')}
-            {statCard('Objetivo Gasto Mensal', formatCurrency(future.desiredMonthlyRetirementSpend), 'bg-[#355f9b] text-white', true)}
-            {statCard('Superavit / Deficit', formatCurrency(future.surplusDeficit), future.surplusDeficit >= 0 ? 'bg-[#d8f0c0]' : 'bg-[#f7ccd2]')}
+            <div className={frameClassName()}>
+              <div className="p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-base font-semibold text-[#173d5d]">Renda e taxa</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#355f9b]">Base mensal</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
+                  {statCard('Taxa de Juros real', formatPercent(future.perpetuityRate), 'success')}
+                  {statCard('Renda passiva potencial (PL)', formatCurrency(future.passivePortfolioIncome), 'success', true)}
+                  {statCard('INSS + Outras receitas', formatCurrency(future.externalMonthlyIncome), 'dark')}
+                  {statCard('Renda passiva potencial (PL + INSS)', formatCurrency(future.combinedMonthlyIncome), 'slate', true)}
+                </div>
+              </div>
+            </div>
+
+            <div className={frameClassName()}>
+              <div className="p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-base font-semibold text-[#173d5d]">Consumo e saldo</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#355f9b]">Comparativo</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
+                  {statCard('Objetivo Gasto Mensal', formatCurrency(future.desiredMonthlyRetirementSpend), 'dark', true)}
+                  {statCard('Superavit / Deficit', formatCurrency(future.surplusDeficit), future.surplusDeficit >= 0 ? 'success' : 'accent', true)}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <AreaTrendChart
-            title="Patrimonio na Perpetuidade"
-            className="min-h-full"
-            data={chartRows}
-            valueFormatter={(value) =>
-              new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(Math.abs(value))
-            }
-            series={[
-              {
-                key: 'balance',
-                label: 'Patrimonio projetado',
-                stroke: '#58ad1b',
-                fill: '#58ad1b',
-                fillOpacity: 0.82
-              }
-            ]}
-          />
+          <div className={frameClassName()}>
+            <div className="p-3 md:p-4">
+              <AreaTrendChart
+                title="Patrimonio na Perpetuidade"
+                className="min-h-full rounded-[22px]"
+                data={chartRows}
+                valueFormatter={(value) =>
+                  new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(Math.abs(value))
+                }
+                series={[
+                  {
+                    key: 'balance',
+                    label: 'Patrimonio projetado',
+                    stroke: '#58ad1b',
+                    fill: '#58ad1b',
+                    fillOpacity: 0.82
+                  }
+                ]}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </SectionCard>

@@ -126,6 +126,17 @@ export async function updatePlan(database, planRecord) {
   return planRecord.id;
 }
 
+export async function deletePlan(database, planId) {
+  const binding = getDatabaseBinding(database);
+
+  await binding
+    .prepare('DELETE FROM profiles WHERE id = ?')
+    .bind(planId)
+    .run();
+
+  return planId;
+}
+
 export async function getPlanById(database, planId) {
   const binding = getDatabaseBinding(database);
   const row = await binding

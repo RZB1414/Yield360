@@ -2,19 +2,37 @@ import { ProtectionChecklist } from './ProtectionChecklist.jsx';
 import { SectionCard } from './SectionCard.jsx';
 import { formatCurrency, formatPercent } from '../lib/formatters.js';
 
+function glassPanelClassName() {
+  return 'rounded-[20px] border border-[#173d5d]/10 bg-white shadow-[0_18px_36px_rgba(23,61,93,0.08)]';
+}
+
+function introPanel() {
+  return (
+    <div className="rounded-[24px] border border-[#173d5d]/12 bg-[linear-gradient(135deg,#f7fbff_0%,#edf5fd_100%)] px-5 py-4 shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#355f9b]">Painel executivo</p>
+          <p className="mt-1 text-xl font-semibold text-[#173d5d]">Legado, protecao e disciplina de aportes</p>
+        </div>
+        <p className="text-sm text-slate/60">Mesmas informacoes, com leitura consolidada e mais limpa</p>
+      </div>
+    </div>
+  );
+}
+
 function ProgressBar({ value }) {
   const clampedValue = Math.min(Math.max(Number(value ?? 0), 0), 100);
 
   return (
-    <div className="rounded-[22px] border border-white/12 bg-white/5 p-4">
-      <div className="mb-3 flex items-center justify-between gap-4 text-white">
-        <p className="font-semibold uppercase tracking-[0.18em] text-white/70">Progresso dos aportes</p>
-        <p className="font-display text-3xl">{formatPercent(value)}</p>
+    <div className={`${glassPanelClassName()} p-4`}>
+      <div className="mb-2 flex items-center justify-between gap-3 text-[#173d5d]">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate/60">Progresso dos aportes</p>
+        <p className="font-display text-2xl leading-none text-[#173d5d]">{formatPercent(value)}</p>
       </div>
-      <div className="h-5 overflow-hidden rounded-full bg-white/10">
+      <div className="h-3.5 overflow-hidden rounded-full bg-[#e8eef5]">
         <div className="h-full bg-gradient-to-r from-[#5fae2b] to-[#9adf52]" style={{ width: `${clampedValue}%` }} />
       </div>
-      <div className="mt-3 flex justify-between text-xs text-white/48">
+      <div className="mt-2 flex justify-between text-[11px] text-slate/45">
         <span>0%</span>
         <span>100%</span>
       </div>
@@ -26,19 +44,19 @@ function ComparisonBars({ title, rows }) {
   const maxValue = Math.max(...rows.map((row) => Math.abs(Number(row.value ?? 0))), 1);
 
   return (
-    <div className="rounded-[22px] border border-white/12 bg-white/5 p-4">
-      <p className="mb-4 text-center text-xl font-semibold uppercase tracking-[0.08em] text-white">{title}</p>
-      <div className="grid gap-4">
+    <div className={`${glassPanelClassName()} p-4`}>
+      <p className="mb-3 text-sm font-semibold uppercase tracking-[0.08em] text-[#173d5d]">{title}</p>
+      <div className="grid gap-3">
         {rows.map((row) => {
           const width = `${(Math.abs(Number(row.value ?? 0)) / maxValue) * 100}%`;
 
           return (
-            <div key={row.label} className="grid gap-2">
-              <div className="flex items-center justify-between gap-4 text-sm text-white/74">
-                <span>{row.label}</span>
-                <span className="font-semibold text-white">{formatCurrency(row.value)}</span>
+            <div key={row.label} className="grid gap-1.5">
+              <div className="flex items-center justify-between gap-3 text-xs text-slate/65">
+                <span className="leading-snug">{row.label}</span>
+                <span className="font-semibold text-[#173d5d]">{formatCurrency(row.value)}</span>
               </div>
-              <div className="h-5 overflow-hidden rounded-full bg-white/10">
+              <div className="h-3.5 overflow-hidden rounded-full bg-[#e8eef5]">
                 <div className="h-full rounded-full" style={{ width, backgroundColor: row.color }} />
               </div>
             </div>
@@ -49,35 +67,72 @@ function ComparisonBars({ title, rows }) {
   );
 }
 
-function ProtectionColumns({ needCount, coveredCount }) {
+function ProtectionColumns({ protectionLayers = [], needCount, coveredCount }) {
+  const totalProtectionLayers = protectionLayers.length;
+  const cards = [
+    {
+      title: 'Necessidade',
+      value: needCount,
+      statusKey: 'needed',
+      accentClass: 'from-[#9fdf7d] via-[#74cb35] to-[#56a91c]',
+      chipClass: 'bg-[#eef8e8] text-[#44741d]',
+      surfaceClass: 'bg-[linear-gradient(180deg,#fbfef8_0%,#f1f8ea_100%)]'
+    },
+    {
+      title: 'Coberto',
+      value: coveredCount,
+      statusKey: 'covered',
+      accentClass: 'from-[#7ee08d] via-[#37c85a] to-[#229a42]',
+      chipClass: 'bg-[#e9f7ee] text-[#1f7a40]',
+      surfaceClass: 'bg-[linear-gradient(180deg,#f9fefa_0%,#ecf9f0_100%)]'
+    }
+  ];
+
   return (
-    
-    <div className="rounded-[22px] border border-white/12 bg-white/5 p-4">
-      <p className="mb-6 text-center text-xl font-semibold uppercase tracking-[0.08em] text-white">Niveis de protecao</p>
-      <div className="grid grid-cols-[0.8fr_0.2fr] gap-5">
-        <div className="flex items-end justify-center gap-12 rounded-[18px] border border-white/8 px-6 py-8">
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex h-56 w-20 items-end overflow-hidden rounded-t-2xl bg-white/8">
-              <div className="w-full bg-gradient-to-t from-[#9cd58a] to-[#5aaa1d]" style={{ height: `${Math.max((needCount / 7) * 100, 8)}%` }} />
+    <div className={`${glassPanelClassName()} flex h-full flex-col p-4`}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold uppercase tracking-[0.08em] text-[#173d5d]">Niveis de protecao</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate/45">Camadas</p>
+      </div>
+      <div className="grid flex-1 gap-3 xl:grid-cols-2">
+        {cards.map((card) => (
+          <div
+            key={card.title}
+            className={`flex h-full min-h-[420px] flex-col rounded-[18px] border border-[#173d5d]/8 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ${card.surfaceClass}`}
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate/55">{card.title}</p>
+                <p className="mt-1 text-sm text-slate/60">Camadas reais do checklist</p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${card.chipClass}`}>
+                {card.value}/{totalProtectionLayers}
+              </span>
             </div>
-            <span className="text-sm font-semibold text-white">Necessidade</span>
-            <span className="text-sm text-white/70">{needCount}</span>
-          </div>
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex h-56 w-20 items-end overflow-hidden rounded-t-2xl bg-white/8">
-              <div className="w-full bg-gradient-to-t from-[#2dc04e] to-[#6ad02c]" style={{ height: `${Math.max((coveredCount / 7) * 100, 8)}%` }} />
+
+            <div className="flex flex-1 flex-col justify-between gap-2">
+              {protectionLayers.map((layer) => {
+                const active = Boolean(layer[card.statusKey]);
+
+                return (
+                  <div key={`${card.title}-${layer.key}`} className="grid gap-1.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate/52">{layer.label}</p>
+                    <div className="h-5 overflow-hidden rounded-full border border-[#d8e2ec] bg-white/80 p-[2px]">
+                      <div
+                        className={`h-full rounded-full transition ${active ? `bg-[linear-gradient(90deg,var(--tw-gradient-stops))] ${card.accentClass}` : 'bg-[#dfe7ef]'}`}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <span className="text-sm font-semibold text-white">Coberto</span>
-            <span className="text-sm text-white/70">{coveredCount}</span>
+
+            <div className="mt-4 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.12em] text-slate/40">
+              <span>0 ativas</span>
+              <span>Total de {totalProtectionLayers} camadas</span>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-col justify-end gap-5 text-sm font-semibold text-white/72">
-          <span>4</span>
-          <span>3</span>
-          <span>2</span>
-          <span>1</span>
-          <span>0</span>
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -85,24 +140,30 @@ function ProtectionColumns({ needCount, coveredCount }) {
 
 function FutureGauge({ value }) {
   const clampedValue = Math.min(Math.max(Number(value ?? 0), 0), 100);
+  const gaugeDegrees = Math.max((clampedValue / 100) * 360, 0);
+  const gaugeStyle = {
+    background: `conic-gradient(#3b78af 0deg, #69a8dd ${gaugeDegrees}deg, #dce6f2 ${gaugeDegrees}deg 360deg)`
+  };
 
   return (
-    <div className="rounded-[22px] border border-white/12 bg-white/5 p-4 text-white">
-      <p className="text-center font-display text-5xl">FUTURO</p>
-      <div className="mt-8 grid gap-4">
-        {Array.from({ length: 11 }, (_, index) => 100 - index * 10).map((tick) => (
-          <div key={tick} className="flex items-center gap-3 text-white/70">
-            <span className="w-10 text-right text-2xl font-semibold">{tick}%</span>
-            <div className="h-px flex-1 bg-white/18" />
-          </div>
-        ))}
+    <div className={`${glassPanelClassName()} flex h-full flex-col p-4 text-[#173d5d]`}>
+      <div className="text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#355f9b]">Projecao</p>
+        <p className="mt-1 font-display text-3xl">FUTURO</p>
       </div>
-      <div className="mt-8 flex items-end justify-center">
-        <div className="flex h-56 w-24 items-end overflow-hidden rounded-t-3xl bg-white/8">
-          <div className="w-full bg-[#2b6e9e] text-center text-lg font-bold text-[#f6df1b]" style={{ height: `${clampedValue}%` }}>
-            <span className="relative top-2">{formatPercent(value)}</span>
+
+      <div className="flex flex-1 flex-col items-center justify-center">
+        <div className="relative h-60 w-60">
+          <div className="absolute inset-0 rounded-full" style={gaugeStyle} />
+          <div className="absolute inset-[18px] rounded-full bg-white shadow-[0_10px_24px_rgba(23,61,93,0.08)]" />
+          <div className="absolute inset-[34px] rounded-full border border-[#dbe5ef] bg-[linear-gradient(180deg,#fbfdff_0%,#f3f8fe_100%)]" />
+          <div className="absolute inset-0 flex items-center justify-center text-center">
+            <p className="font-display text-4xl text-[#173d5d]">{formatPercent(value)}</p>
           </div>
         </div>
+        <p className="mt-5 text-center text-sm font-semibold uppercase tracking-[0.14em] text-slate/55">
+          Liberdade Financeira
+        </p>
       </div>
     </div>
   );
@@ -117,13 +178,19 @@ export function ExecutiveDashboard({ input, control, succession }) {
     <SectionCard
       eyebrow="Aba 5"
       title="Controle executivo"
-      description="Painel escuro inspirado no dashboard da planilha com progresso dos aportes, cobertura de legado, protecao de renda, futuro e camadas de protecao."
+      description="Painel executivo com progresso dos aportes, cobertura de legado, protecao de renda, futuro e camadas de protecao no mesmo visual claro do restante da pagina."
     >
-      <div className="rounded-[32px] bg-[#3d3d3d] p-6 text-white shadow-panel">
-        <div className="grid gap-4 xl:grid-cols-[0.33fr_0.47fr_0.2fr]">
-          <ProtectionColumns needCount={control.needCount} coveredCount={control.coveredCount} />
+      <div className="rounded-[30px] border border-[#173d5d]/12 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-4 shadow-[0_18px_34px_rgba(23,61,93,0.08)] lg:p-5">
+        {introPanel()}
 
-          <div className="grid gap-4">
+        <div className="mt-4 grid gap-3 xl:grid-cols-[0.33fr_0.33fr_0.33fr]">
+          <ProtectionColumns
+            protectionLayers={control.protectionLayers}
+            needCount={control.needCount}
+            coveredCount={control.coveredCount}
+          />
+
+          <div className="grid gap-3">
             <ProgressBar value={control.contributedProgress} />
             <ComparisonBars
               title="Indicadores de legado e protecao"
@@ -146,42 +213,42 @@ export function ExecutiveDashboard({ input, control, succession }) {
           <FutureGauge value={control.financialFreedomProgress} />
         </div>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[0.38fr_0.62fr]">
-          <div className="rounded-[22px] border border-white/12 bg-white/5 p-4">
-            <p className="mb-4 text-xl font-semibold text-white">Aportes acordados</p>
-            <div className="overflow-hidden rounded-[18px] border border-white/10">
-              <table className="min-w-full border-collapse text-sm text-white">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[0.4fr_0.6fr]">
+          <div className={`${glassPanelClassName()} p-4`}>
+            <p className="mb-3 text-base font-semibold text-[#173d5d]">Aportes acordados</p>
+            <div className="overflow-hidden rounded-[16px] border border-[#173d5d]/10 bg-[#fbfdff]">
+              <table className="min-w-full border-collapse text-xs text-slate md:text-sm">
                 <thead className="bg-[#355f9b]">
                   <tr>
-                    <th className="px-4 py-3 text-left">Aportes</th>
-                    <th className="px-4 py-3 text-right">Efetivo</th>
+                    <th className="px-3 py-2.5 text-left">Aportes</th>
+                    <th className="px-3 py-2.5 text-right">Efetivo</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-t border-white/10 bg-[#1f3252] font-semibold text-white">
-                    <td className="px-4 py-3">Acordado por mes</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(input.future.agreedMonthlyContribution)}</td>
+                  <tr className="border-t border-[#173d5d]/10 bg-[#eef4fb] font-semibold text-[#173d5d]">
+                    <td className="px-3 py-2.5">Acordado por mes</td>
+                    <td className="px-3 py-2.5 text-right">{formatCurrency(input.future.agreedMonthlyContribution)}</td>
                   </tr>
-                  <tr className="border-t border-white/10 bg-[#1f3252] font-semibold text-white">
-                    <td className="px-4 py-3">Acordado total</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(control.agreedContributionTarget)}</td>
+                  <tr className="border-t border-[#173d5d]/10 bg-[#eef4fb] font-semibold text-[#173d5d]">
+                    <td className="px-3 py-2.5">Acordado total</td>
+                    <td className="px-3 py-2.5 text-right">{formatCurrency(control.agreedContributionTarget)}</td>
                   </tr>
-                  <tr className="border-t border-white/10">
-                    <td className="px-4 py-3">Total aportado</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(control.totalContributed)}</td>
+                  <tr className="border-t border-[#173d5d]/10">
+                    <td className="px-3 py-2.5">Total aportado</td>
+                    <td className="px-3 py-2.5 text-right">{formatCurrency(control.totalContributed)}</td>
                   </tr>
-                  <tr className="border-t border-white/10 bg-[#9a0000] text-[#fff06d]">
-                    <td className="px-4 py-3">Quanto falta</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(control.remainingContributionGap)}</td>
+                  <tr className="border-t border-[#173d5d]/10 bg-[#fbe8e5] text-[#8c2f1f]">
+                    <td className="px-3 py-2.5">Quanto falta</td>
+                    <td className="px-3 py-2.5 text-right">{formatCurrency(control.remainingContributionGap)}</td>
                   </tr>
-                  <tr className="border-t border-white/10 bg-[#ece300] text-[#111]">
-                    <td className="px-4 py-3">Quanto superou</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(control.contributionOverage)}</td>
+                  <tr className="border-t border-[#173d5d]/10 bg-[#f6f0c8] text-[#5f5400]">
+                    <td className="px-3 py-2.5">Quanto superou</td>
+                    <td className="px-3 py-2.5 text-right">{formatCurrency(control.contributionOverage)}</td>
                   </tr>
                   {control.monthlyContributions.map((item) => (
-                    <tr key={item.month} className="border-t border-white/10">
-                      <td className="px-4 py-3">{item.month}</td>
-                      <td className="px-4 py-3 text-right">{formatCurrency(item.amount)}</td>
+                    <tr key={item.month} className="border-t border-[#173d5d]/10 odd:bg-white even:bg-[#f8fbff]">
+                      <td className="px-3 py-2.5">{item.month}</td>
+                      <td className="px-3 py-2.5 text-right">{formatCurrency(item.amount)}</td>
                     </tr>
                   ))}
                 </tbody>

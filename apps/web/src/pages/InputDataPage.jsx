@@ -1,6 +1,6 @@
 import { plannerSections } from '@yield-360/shared';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ExecutiveDashboard } from '../components/ExecutiveDashboard.jsx';
 import { FuturePanel } from '../components/FuturePanel.jsx';
 import { ResultsShowcase } from '../components/ResultsShowcase.jsx';
@@ -11,6 +11,151 @@ import { analyzePlan, getHealth, getPlan, savePlan, updatePlan } from '../lib/ap
 import { getLastContactStatus } from '../lib/last-contact.js';
 import { createEmptyPlannerInput, hydratePlannerInput, updateNestedValue } from '../lib/planner-state.js';
 import { formatDate } from '../lib/formatters.js';
+
+const fieldTabMap = {
+	'client.name': 'visao360',
+	'client.birthDate': 'visao360',
+	'planning.consultantStartAge': 'visao360',
+	'future.targetAge': 'visao360'
+};
+
+function calculateAgeFromBirthDate(birthDateValue) {
+	if (!birthDateValue) {
+		return null;
+	}
+
+	const birthDate = new Date(`${birthDateValue}T00:00:00Z`);
+
+	if (Number.isNaN(birthDate.getTime())) {
+		return null;
+	}
+
+	const today = new Date();
+	let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+	const monthDifference = today.getUTCMonth() - birthDate.getUTCMonth();
+
+	if (monthDifference < 0 || (monthDifference === 0 && today.getUTCDate() < birthDate.getUTCDate())) {
+		age -= 1;
+	}
+
+	return Math.max(age, 0);
+}
+
+function buildBirthDateFromAge(ageValue) {
+	if (ageValue === '') {
+		return '';
+	}
+
+	const parsedAge = Number(ageValue);
+
+	if (!Number.isFinite(parsedAge) || parsedAge < 0) {
+		return null;
+	}
+
+	const age = Math.floor(parsedAge);
+	const today = new Date();
+	const birthYear = today.getUTCFullYear() - age;
+	const birthDate = new Date(Date.UTC(birthYear, today.getUTCMonth(), today.getUTCDate()));
+
+	return birthDate.toISOString().slice(0, 10);
+}
+
+function applyDerivedInputRules(input) {
+	const nextState = structuredClone(input);
+	const annualContributionGoal = Number(nextState.future.agreedMonthlyContribution ?? 0) * 12 + Number(nextState.planning.extraContributions ?? 0);
+
+	nextState.planning.annualContributionGoal = Number.isFinite(annualContributionGoal) ? annualContributionGoal : 0;
+
+	if (!nextState.vision360.budget.emergencyReserveHas) {
+		nextState.vision360.budget.emergencyReserveCurrent = 0;
+	}
+
+	if (!nextState.planning.wantsRetirementIncome) {
+		nextState.future.desiredMonthlyRetirementSpend = 0;
+	}
+
+	if (!nextState.planning.extraIncomeExpected) {
+		nextState.planning.extraMonthlyIncome = 0;
+	}
+
+	return nextState;
+}
+
+function validatePlannerInput(input) {
+	const nextFieldErrors = {};
+	const currentAge = calculateAgeFromBirthDate(input.client.birthDate);
+	const targetAge = Number(input.future.targetAge ?? 0);
+	const consultantStartAge = Number(input.planning.consultantStartAge ?? 0);
+
+	if (!input.client.name.trim()) {
+		nextFieldErrors['client.name'] = 'Informe o nome do cliente.';
+	}
+
+	if (!input.client.birthDate) {
+		nextFieldErrors['client.birthDate'] = 'Informe a data de nascimento ou a idade.';
+	} else if (currentAge === null) {
+		nextFieldErrors['client.birthDate'] = 'Informe uma data de nascimento valida.';
+	}
+
+	if (consultantStartAge <= 0) {
+		nextFieldErrors['planning.consultantStartAge'] = 'Informe a idade na contratacao da consultoria.';
+	}
+
+	if (targetAge <= 0) {
+		nextFieldErrors['future.targetAge'] = 'Informe a idade objetivo da aposentadoria.';
+	} else if (currentAge !== null && targetAge <= currentAge) {
+		nextFieldErrors['future.targetAge'] = 'A idade objetivo deve ser maior que a idade atual.';
+	}
+
+	return nextFieldErrors;
+}
+
+function mapRequestErrorToFieldErrors(message) {
+	if (!message) {
+		return {};
+	}
+
+	if (message.includes('client name is required')) {
+		return { 'client.name': 'Informe o nome do cliente.' };
+	}
+
+	if (message.includes('invalid birth date')) {
+		return { 'client.birthDate': 'Informe uma data de nascimento valida.' };
+	}
+
+	if (message.includes('target age must be greater than current age')) {
+		return { 'future.targetAge': 'A idade objetivo deve ser maior que a idade atual.' };
+	}
+
+	return {};
+}
+
+function scrollToField(path) {
+	if (!path) {
+		return;
+	}
+
+	let remainingAttempts = 6;
+
+	function attemptScroll() {
+		const element = document.querySelector(`[data-field-path="${path}"]`);
+
+		if (!element) {
+			remainingAttempts -= 1;
+
+			if (remainingAttempts > 0) {
+				window.setTimeout(attemptScroll, 60);
+			}
+
+			return;
+		}
+
+		element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		element.focus({ preventScroll: true });
+	}
+
+	window.setTimeout(attemptScroll, 50);
+}
 
 function TabButton({ active, label, description, onClick }) {
 	return (
@@ -45,6 +190,7 @@ function LastContactBadge({ lastContactAt }) {
 }
 
 export function InputDataPage() {
+	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const planId = searchParams.get('planId') ?? '';
 	const [input, setInput] = useState(() => createEmptyPlannerInput());
@@ -56,6 +202,7 @@ export function InputDataPage() {
 	const [analyzing, setAnalyzing] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
+	const [fieldErrors, setFieldErrors] = useState({});
 
 	useEffect(() => {
 		let cancelled = false;
@@ -84,7 +231,7 @@ export function InputDataPage() {
 
 				if (!cancelled) {
 					setActivePlanId(data.planId);
-					setInput(hydratePlannerInput(data.input));
+					setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
 					setReport(data.report);
 				}
 			} catch (requestError) {
@@ -106,7 +253,113 @@ export function InputDataPage() {
 	}, [planId]);
 
 	function handleFieldChange(path, value, type = 'text') {
-		setInput((currentState) => updateNestedValue(currentState, path, value, type));
+		setFieldErrors((currentErrors) => {
+			if (!currentErrors[path] && !(path === 'client.birthDate' && currentErrors['planning.consultantStartAge'])) {
+				return currentErrors;
+			}
+
+			const nextErrors = { ...currentErrors };
+			delete nextErrors[path];
+
+			if (path === 'client.birthDate') {
+				delete nextErrors['planning.consultantStartAge'];
+			}
+
+			return nextErrors;
+		});
+
+		setInput((currentState) => {
+			const previousClientAge = calculateAgeFromBirthDate(currentState.client.birthDate);
+			let nextState = updateNestedValue(currentState, path, value, type);
+
+			if (path === 'client.birthDate') {
+				const nextClientAge = calculateAgeFromBirthDate(nextState.client.birthDate);
+				const shouldSyncConsultantAge =
+					currentState.planning.consultantStartAge === 0 || currentState.planning.consultantStartAge === previousClientAge;
+
+				if (shouldSyncConsultantAge && nextClientAge !== null) {
+					nextState = updateNestedValue(nextState, 'planning.consultantStartAge', nextClientAge, 'number');
+				}
+			}
+
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleClientAgeChange(ageValue) {
+		setFieldErrors((currentErrors) => {
+			const nextErrors = { ...currentErrors };
+			delete nextErrors['client.birthDate'];
+			delete nextErrors['planning.consultantStartAge'];
+			return nextErrors;
+		});
+
+		setInput((currentState) => {
+			const previousClientAge = calculateAgeFromBirthDate(currentState.client.birthDate);
+			const nextBirthDate = buildBirthDateFromAge(ageValue);
+
+			if (nextBirthDate === null) {
+				return currentState;
+			}
+
+			let nextState = updateNestedValue(currentState, 'client.birthDate', nextBirthDate);
+			const nextClientAge = calculateAgeFromBirthDate(nextBirthDate);
+			const shouldSyncConsultantAge =
+				currentState.planning.consultantStartAge === 0 || currentState.planning.consultantStartAge === previousClientAge;
+
+			if (shouldSyncConsultantAge) {
+				nextState = updateNestedValue(nextState, 'planning.consultantStartAge', nextClientAge ?? 0, 'number');
+			}
+
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleFamilyMemberAgeChange(index, ageValue) {
+		const nextBirthDate = buildBirthDateFromAge(ageValue);
+
+		if (nextBirthDate === null) {
+			return;
+		}
+
+		setInput((currentState) => applyDerivedInputRules(updateNestedValue(currentState, `family.members.${index}.birthDate`, nextBirthDate)));
+	}
+
+	function handleAddFamilyMember() {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.family.members = [
+				...(nextState.family.members ?? []),
+				{ name: '', relationship: '', birthDate: '', profession: '' }
+			];
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleRemoveFamilyMember(index) {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.family.members = (nextState.family.members ?? []).filter((_, memberIndex) => memberIndex !== index);
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function applyValidationErrors(nextFieldErrors) {
+		setFieldErrors(nextFieldErrors);
+
+		const firstInvalidPath = Object.keys(nextFieldErrors)[0];
+
+		if (!firstInvalidPath) {
+			return;
+		}
+
+		const nextTab = fieldTabMap[firstInvalidPath] ?? 'visao360';
+
+		if (activeTab !== nextTab) {
+			setActiveTab(nextTab);
+		}
+
+		scrollToField(firstInvalidPath);
 	}
 
 	async function handleAnalyze() {
@@ -116,7 +369,7 @@ export function InputDataPage() {
 		try {
 			const data = await analyzePlan(input);
 			setReport(data.report);
-			setInput(hydratePlannerInput(data.input));
+			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
 		} catch (requestError) {
 			setError(requestError.message);
 		} finally {
@@ -125,20 +378,42 @@ export function InputDataPage() {
 	}
 
 	async function handleSave() {
+		const nextFieldErrors = validatePlannerInput(input);
+
+		if (Object.keys(nextFieldErrors).length > 0) {
+			applyValidationErrors(nextFieldErrors);
+			setError('Corrija os campos destacados antes de guardar o cliente.');
+			return;
+		}
+
 		setSaving(true);
 		setError('');
+		setFieldErrors({});
 
 		try {
+			const isEditingExistingPlan = Boolean(activePlanId);
 			const data = activePlanId ? await updatePlan(activePlanId, input) : await savePlan(input);
 
 			setActivePlanId(data.planId);
-			setInput(hydratePlannerInput(data.input));
+			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
 			setReport(data.report);
+			setFieldErrors({});
+
+			if (isEditingExistingPlan) {
+				navigate(`/dashboard?planId=${data.planId}`, { replace: true });
+				return;
+			}
 
 			if (!planId || planId !== data.planId) {
 				setSearchParams({ planId: data.planId });
 			}
 		} catch (requestError) {
+			const nextFieldErrorsFromRequest = mapRequestErrorToFieldErrors(requestError.message);
+
+			if (Object.keys(nextFieldErrorsFromRequest).length > 0) {
+				applyValidationErrors(nextFieldErrorsFromRequest);
+			}
+
 			setError(requestError.message);
 		} finally {
 			setSaving(false);
@@ -165,7 +440,7 @@ export function InputDataPage() {
 			const data = await updatePlan(activePlanId, nextInput);
 
 			setActivePlanId(data.planId);
-			setInput(hydratePlannerInput(data.input));
+			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
 			setReport(data.report);
 		} catch (requestError) {
 			setError(requestError.message);
@@ -198,7 +473,18 @@ export function InputDataPage() {
 		}
 
 		if (activeTab === 'visao360') {
-			return <Vision360Form input={input} overview={overview} onFieldChange={handleFieldChange} />;
+			return (
+				<Vision360Form
+					input={input}
+					overview={overview}
+					onFieldChange={handleFieldChange}
+					onClientAgeChange={handleClientAgeChange}
+					onFamilyMemberAgeChange={handleFamilyMemberAgeChange}
+					onAddFamilyMember={handleAddFamilyMember}
+					onRemoveFamilyMember={handleRemoveFamilyMember}
+					fieldErrors={fieldErrors}
+				/>
+			);
 		}
 
 		if (activeTab === 'resultados') {

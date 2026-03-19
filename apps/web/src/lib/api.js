@@ -1,5 +1,5 @@
 const productionWorkerUrl = 'https://yield-360-api.yield360app.workers.dev';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || productionWorkerUrl;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '' : productionWorkerUrl);
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -46,6 +46,12 @@ export function updatePlan(planId, input) {
   return request(`/api/plans/${planId}`, {
     method: 'PUT',
     body: JSON.stringify(input)
+  });
+}
+
+export function deletePlan(planId) {
+  return request(`/api/plans/${planId}`, {
+    method: 'DELETE'
   });
 }
 

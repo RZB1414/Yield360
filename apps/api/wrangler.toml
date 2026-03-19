@@ -13,5 +13,5 @@ enabled = true
 [[d1_databases]]
 binding = "DB"
 database_name = "yield-360-db"
-database_id = "1c8949d1-8e0a-4c3b-be7d-e3a65ad59f63"
-preview_database_id = "1c8949d1-8e0a-4c3b-be7d-e3a65ad59f63"
+database_id = "1d27c451-5ef5-43ba-827e-ac7b4abe1674"
+preview_database_id = "1d27c451-5ef5-43ba-827e-ac7b4abe1674"

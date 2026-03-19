@@ -18,13 +18,39 @@ export function formatPlainNumber(value, fractionDigits = 0) {
   }).format(Number(value ?? 0));
 }
 
-export function formatDate(value) {
+function parseValidDate(value) {
   if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+}
+
+export function formatDate(value) {
+  const date = parseValidDate(value);
+
+  if (!date) {
     return '-';
   }
 
   return new Intl.DateTimeFormat('pt-BR', {
     dateStyle: 'medium',
     timeStyle: 'short'
-  }).format(new Date(value));
+  }).format(date);
+}
+
+export function formatDateOnly(value) {
+  const date = parseValidDate(value);
+
+  if (!date) {
+    return '-';
+  }
+
+  return new Intl.DateTimeFormat('pt-BR').format(date);
 }

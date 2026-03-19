@@ -8,6 +8,25 @@ export const maritalRegimes = [
   'Participacao final nos aquestos'
 ];
 
+export const maritalStatuses = [
+  'Solteiro(a)',
+  'Casado(a)',
+  'Uniao estavel',
+  'Divorciado(a)',
+  'Viuvo(a)'
+];
+
+export const familyRelationshipOptions = [
+  'Conjuge',
+  'Companheiro(a)',
+  'Filho(a)',
+  'Pai',
+  'Mae',
+  'Irmao(a)',
+  'Neto(a)',
+  'Outro'
+];
+
 export const protectionLayerFields = [
   { key: 're100', label: 'RE - 100%' },
   { key: 'assetAllocation', label: 'Asset Allocation' },
@@ -29,12 +48,7 @@ export const defaultPlannerInput = {
     profession: ''
   },
   family: {
-    members: [
-      { name: '', relationship: '', birthDate: '', profession: '' },
-      { name: '', relationship: '', birthDate: '', profession: '' },
-      { name: '', relationship: '', birthDate: '', profession: '' },
-      { name: '', relationship: '', birthDate: '', profession: '' }
-    ]
+    members: []
   },
   vision360: {
     assets: {

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ExecutiveDashboard } from '../components/ExecutiveDashboard.jsx';
 import { FuturePanel } from '../components/FuturePanel.jsx';
 import { ResultsShowcase } from '../components/ResultsShowcase.jsx';
 import { SectionCard } from '../components/SectionCard.jsx';
 import { Vision360Form } from '../components/Vision360Form.jsx';
-import { getPlan, getPlans, updatePlan } from '../lib/api.js';
+import { deletePlan, getPlan, getPlans, updatePlan } from '../lib/api.js';
 import { getLastContactStatus, sortPlansByLastContact } from '../lib/last-contact.js';
 import { createEmptyPlannerInput, hydratePlannerInput } from '../lib/planner-state.js';
 import { formatCurrency, formatDate } from '../lib/formatters.js';
@@ -33,7 +33,20 @@ function LastContactBadge({ lastContactAt }) {
   );
 }
 
+function CompactLastContactStatus({ lastContactAt }) {
+  const status = getLastContactStatus(lastContactAt);
+
+  return (
+    <div className="flex items-center gap-3 text-sm text-slate/72">
+      <span className={`h-3.5 w-3.5 rounded-full ${status.colorClass}`} aria-hidden="true" />
+      <p className="font-semibold text-slate">{status.daysLabel}</p>
+    </div>
+  );
+}
+
 export function DashboardPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedPlanIdFromUrl = searchParams.get('planId') ?? '';
   const [input, setInput] = useState(() => createEmptyPlannerInput());
   const [report, setReport] = useState(null);
   const [recentPlans, setRecentPlans] = useState([]);
@@ -41,6 +54,7 @@ export function DashboardPage() {
   const [contactFilter, setContactFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [updatingLastContact, setUpdatingLastContact] = useState(false);
+  const [deletingPlan, setDeletingPlan] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -58,6 +72,23 @@ export function DashboardPage() {
         }
 
         setRecentPlans(sortPlansByLastContact(plans ?? []));
+
+        if (!selectedPlanIdFromUrl) {
+          setActivePlanId('');
+          setInput(createEmptyPlannerInput());
+          setReport(null);
+          return;
+        }
+
+        const data = await getPlan(selectedPlanIdFromUrl);
+
+        if (cancelled) {
+          return;
+        }
+
+        setActivePlanId(data.planId);
+        setInput(hydratePlannerInput(data.input));
+        setReport(data.report);
       } catch (requestError) {
         if (!cancelled) {
           setError(requestError.message);
@@ -74,25 +105,14 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedPlanIdFromUrl]);
 
-  async function handleSelectPlan(planId) {
-    setLoading(true);
-    setError('');
-
-    try {
-      const data = await getPlan(planId);
-      setActivePlanId(data.planId);
-      setInput(hydratePlannerInput(data.input));
-      setReport(data.report);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
-    }
+  function handleSelectPlan(planId) {
+    setSearchParams({ planId });
   }
 
   function handleClosePlan() {
+    setSearchParams({});
     setActivePlanId('');
     setInput(createEmptyPlannerInput());
     setReport(null);
@@ -126,6 +146,33 @@ export function DashboardPage() {
       setError(requestError.message);
     } finally {
       setUpdatingLastContact(false);
+    }
+  }
+
+  async function handleDeleteSelectedPlan() {
+    if (!activePlanId || deletingPlan) {
+      return;
+    }
+
+    const confirmed = window.confirm('Tem a certeza de que deseja excluir este cliente? Esta acao nao pode ser desfeita.');
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingPlan(true);
+    setError('');
+
+    try {
+      await deletePlan(activePlanId);
+      const plans = await getPlans();
+
+      handleClosePlan();
+      setRecentPlans(sortPlansByLastContact(plans ?? []));
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setDeletingPlan(false);
     }
   }
 
@@ -175,6 +222,14 @@ export function DashboardPage() {
                 >
                   Editar cliente
                 </Link>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedPlan}
+                  disabled={deletingPlan || loading}
+                  className="rounded-full border border-[#c24d2c]/20 bg-[#fff4ef] px-5 py-3 font-semibold text-[#9f3518] transition hover:border-[#c24d2c]/40 hover:bg-[#ffe9df] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deletingPlan ? 'A excluir cliente...' : 'Excluir cliente'}
+                </button>
                 <button
                   type="button"
                   onClick={handleClosePlan}
@@ -276,36 +331,10 @@ export function DashboardPage() {
                   onClick={() => handleSelectPlan(plan.id)}
                   className="rounded-[22px] border border-slate/10 bg-white px-4 py-4 text-left text-slate shadow-[0_10px_25px_rgba(23,38,50,0.04)] transition hover:border-[#173d5d]/30 hover:shadow-[0_16px_34px_rgba(23,38,50,0.08)]"
                 >
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px] xl:items-start">
-                    <div>
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-display text-[1.75rem] leading-none">{plan.clientName}</p>
-                          <p className="mt-1 text-sm text-slate/62">{plan.investorProfile || 'Perfil nao informado'}</p>
-                        </div>
-                        <span className="rounded-full bg-[#eef2f4] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate">
-                          {plan.retirementAge > 0 ? `${plan.retirementAge} anos` : 'Sem meta'}
-                        </span>
-                      </div>
-                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                        <div className="rounded-[16px] bg-[#f8fafc] px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate/48">Patrimonio liquido</p>
-                          <p className="mt-1 text-sm font-semibold text-slate">{formatCurrency(plan.currentNetWorth)}</p>
-                        </div>
-                        <div className="rounded-[16px] bg-[#f8fafc] px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate/48">Valor futuro</p>
-                          <p className="mt-1 text-sm font-semibold text-slate">{formatCurrency(plan.futureRealValue)}</p>
-                        </div>
-                        <div className="rounded-[16px] bg-[#f8fafc] px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate/48">Atualizado</p>
-                          <p className="mt-1 text-sm font-semibold text-slate">{formatDate(plan.updatedAt)}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-[18px] border border-slate/10 bg-[#f8fafc] px-4 py-3 xl:min-h-full">
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate/52">Status de contato</p>
-                      <LastContactBadge lastContactAt={plan.lastContactAt} />
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="font-display text-[1.75rem] leading-none">{plan.clientName}</p>
+                    <div className="rounded-[18px] border border-slate/10 bg-[#f8fafc] px-4 py-3">
+                      <CompactLastContactStatus lastContactAt={plan.lastContactAt} />
                     </div>
                   </div>
                 </button>

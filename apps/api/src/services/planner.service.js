@@ -141,7 +141,7 @@ function normalizeProtectionMatrix(payload = {}, defaults = {}) {
 }
 
 function normalizeFamilyMembers(payload = [], defaults = []) {
-  const desiredLength = Math.max(defaults.length, Array.isArray(payload) ? payload.length : 0, 4);
+  const desiredLength = Math.max(defaults.length, Array.isArray(payload) ? payload.length : 0);
 
   return Array.from({ length: desiredLength }, (_, index) => {
     const defaultMember = defaults[index] ?? { name: '', relationship: '', birthDate: '', profession: '' };
