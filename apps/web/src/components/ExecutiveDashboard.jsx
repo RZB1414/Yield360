@@ -51,6 +51,7 @@ function ComparisonBars({ title, rows }) {
 
 function ProtectionColumns({ needCount, coveredCount }) {
   return (
+    
     <div className="rounded-[22px] border border-white/12 bg-white/5 p-4">
       <p className="mb-6 text-center text-xl font-semibold uppercase tracking-[0.08em] text-white">Niveis de protecao</p>
       <div className="grid grid-cols-[0.8fr_0.2fr] gap-5">
