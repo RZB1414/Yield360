@@ -177,12 +177,20 @@ export function normalizePlannerInput(payload = {}) {
       ...defaults.vision360,
       ...(payload.vision360 ?? {}),
       assets: {
-        ...defaults.vision360.assets,
-        ...(payload.vision360?.assets ?? {})
+        items: Array.isArray(payload.vision360?.assets?.items)
+          ? payload.vision360.assets.items.map((item) => ({
+              description: String(item?.description ?? '').trim(),
+              value: Math.max(0, toNumber(item?.value))
+            }))
+          : defaults.vision360.assets.items
       },
       liabilities: {
-        ...defaults.vision360.liabilities,
-        ...(payload.vision360?.liabilities ?? {})
+        items: Array.isArray(payload.vision360?.liabilities?.items)
+          ? payload.vision360.liabilities.items.map((item) => ({
+              description: String(item?.description ?? '').trim(),
+              value: Math.max(0, toNumber(item?.value))
+            }))
+          : defaults.vision360.liabilities.items
       },
       budget: {
         ...defaults.vision360.budget,
@@ -234,13 +242,7 @@ export function normalizePlannerInput(payload = {}) {
   input.family.members = normalizeFamilyMembers(payload.family?.members, defaults.family.members);
 
   [
-    ['vision360', 'assets', 'financial'],
-    ['vision360', 'assets', 'immobilized'],
-    ['vision360', 'assets', 'other'],
-    ['vision360', 'liabilities', 'loans'],
-    ['vision360', 'liabilities', 'financing'],
-    ['vision360', 'liabilities', 'consortiums'],
-    ['vision360', 'liabilities', 'other'],
+
     ['vision360', 'budget', 'monthlyIncome'],
     ['vision360', 'budget', 'monthlyExpenses'],
     ['vision360', 'budget', 'emergencyReserveNeed'],
@@ -340,19 +342,14 @@ export function buildPlannerReport(rawInput) {
     age: member.birthDate ? calculateAgeFromBirthDate(member.birthDate) : null
   }));
 
-  const totalAssets =
-    input.vision360.assets.financial + input.vision360.assets.immobilized + input.vision360.assets.other;
-  const totalLiabilities =
-    input.vision360.liabilities.loans +
-    input.vision360.liabilities.financing +
-    input.vision360.liabilities.consortiums +
-    input.vision360.liabilities.other;
+  const totalAssets = input.vision360.assets.items.reduce((sum, item) => sum + toNumber(item.value), 0);
+  const totalLiabilities = input.vision360.liabilities.items.reduce((sum, item) => sum + toNumber(item.value), 0);
   const netWorth = totalAssets - totalLiabilities;
   const annualIncome = input.vision360.budget.monthlyIncome * 12;
   const annualExpenses = input.vision360.budget.monthlyExpenses * 12;
   const monthlyContributionCapacity =
     input.vision360.budget.monthlyIncome - input.vision360.budget.monthlyExpenses;
-  const investableAssets = input.vision360.assets.financial;
+  const investableAssets = totalAssets;
 
   if (input.future.targetAge <= age) {
     throw new Error('target age must be greater than current age');

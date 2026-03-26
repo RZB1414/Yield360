@@ -7,7 +7,7 @@ import { ResultsShowcase } from '../components/ResultsShowcase.jsx';
 import { SectionCard } from '../components/SectionCard.jsx';
 import { SuccessionPlanner } from '../components/SuccessionPlanner.jsx';
 import { Vision360Form } from '../components/Vision360Form.jsx';
-import { analyzePlan, getHealth, getPlan, savePlan, updatePlan } from '../lib/api.js';
+import { analyzePlan, getHealth, getPlan, savePlan, updatePlan, uploadPlanDocument } from '../lib/api.js';
 import { getLastContactStatus } from '../lib/last-contact.js';
 import { createEmptyPlannerInput, hydratePlannerInput, updateNestedValue } from '../lib/planner-state.js';
 import { formatDate } from '../lib/formatters.js';
@@ -282,6 +282,46 @@ export function InputDataPage() {
 				}
 			}
 
+			if (path === 'client.investorProfile' || path === 'profileValidation.suggestedProfile') {
+				const otherPath = path === 'client.investorProfile' ? 'profileValidation.suggestedProfile' : 'client.investorProfile';
+				nextState = updateNestedValue(nextState, otherPath, value);
+
+				const profileConfigs = {
+					'Conservador': {
+						emotionalCapacity: 'Não tolera perdas',
+						benchmarkLabel: 'IPCA+ 4,0%',
+						benchmarkRate: 4,
+						term: '1 ano - 3 anos'
+					},
+					'Moderado': {
+						emotionalCapacity: 'Tolera quedas moderadas (-2% a -5%)',
+						benchmarkLabel: 'IPCA+ 5%',
+						benchmarkRate: 5,
+						term: '3 anos - 5 anos'
+					},
+					'Arrojado': {
+						emotionalCapacity: 'Tolera quedas maiores (-5% a -15%)',
+						benchmarkLabel: 'IPCA+ 6%',
+						benchmarkRate: 6,
+						term: '5 anos - 7 anos'
+					},
+					'Agressivo': {
+						emotionalCapacity: 'Tolera quedas significativas (> -15%)',
+						benchmarkLabel: 'IPCA+ 7%',
+						benchmarkRate: 7,
+						term: '+ 7 anos'
+					}
+				};
+
+				const config = profileConfigs[value];
+				if (config) {
+					nextState = updateNestedValue(nextState, 'profileValidation.emotionalCapacity', config.emotionalCapacity);
+					nextState = updateNestedValue(nextState, 'profileValidation.benchmarkLabel', config.benchmarkLabel);
+					nextState = updateNestedValue(nextState, 'profileValidation.benchmarkRate', config.benchmarkRate, 'number');
+					nextState = updateNestedValue(nextState, 'profileValidation.term', config.term);
+				}
+			}
+
 			return applyDerivedInputRules(nextState);
 		});
 	}
@@ -344,6 +384,95 @@ export function InputDataPage() {
 		});
 	}
 
+	function handleAddAsset() {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.vision360.assets.items = [
+				...(nextState.vision360.assets.items ?? []),
+				{ description: '', value: 0 }
+			];
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleRemoveAsset(index) {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.vision360.assets.items = (nextState.vision360.assets.items ?? []).filter((_, i) => i !== index);
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleAddLiability() {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.vision360.liabilities.items = [
+				...(nextState.vision360.liabilities.items ?? []),
+				{ description: '', value: 0 }
+			];
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleRemoveLiability(index) {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.vision360.liabilities.items = (nextState.vision360.liabilities.items ?? []).filter((_, i) => i !== index);
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleAddPolicy() {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.protection.policies = [
+				...(nextState.protection.policies ?? []),
+				{ id: crypto.randomUUID(), name: '', years: 0, company: '', value: 0, documentId: null, documentName: null }
+			];
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleRemovePolicy(index) {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.protection.policies = (nextState.protection.policies ?? []).filter((_, i) => i !== index);
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handlePolicyFieldChange(index, field, value, type = 'text') {
+		setInput((currentState) => applyDerivedInputRules(updateNestedValue(currentState, `protection.policies.${index}.${field}`, value, type)));
+	}
+
+	function handlePolicyFileChange(index, file) {
+		if (!file) {
+			setInput((currentState) => {
+				const nextState = structuredClone(currentState);
+				const policy = nextState.protection.policies[index];
+				delete policy.contentBase64;
+				policy.documentName = null;
+				policy.documentId = null;
+				return applyDerivedInputRules(nextState);
+			});
+			return;
+		}
+
+		const reader = new FileReader();
+		reader.onload = (e) => {
+			const base64 = e.target.result;
+			setInput((currentState) => {
+				const nextState = structuredClone(currentState);
+				const policy = nextState.protection.policies[index];
+				policy.contentBase64 = base64;
+				policy.documentName = file.name;
+				policy.documentId = null;
+				return applyDerivedInputRules(nextState);
+			});
+		};
+		reader.readAsDataURL(file);
+	}
+
 	function applyValidationErrors(nextFieldErrors) {
 		setFieldErrors(nextFieldErrors);
 
@@ -391,21 +520,55 @@ export function InputDataPage() {
 		setFieldErrors({});
 
 		try {
-			const isEditingExistingPlan = Boolean(activePlanId);
-			const data = activePlanId ? await updatePlan(activePlanId, input) : await savePlan(input);
+			const inputToSave = structuredClone(input);
+			const pendingUploads = [];
 
-			setActivePlanId(data.planId);
+			if (inputToSave.protection?.policies) {
+				inputToSave.protection.policies.forEach((policy, index) => {
+					if (policy.contentBase64) {
+						pendingUploads.push({ index, name: policy.documentName, base64: policy.contentBase64 });
+					}
+					delete policy.contentBase64;
+				});
+			}
+
+			const isEditingExistingPlan = Boolean(activePlanId);
+			let data = activePlanId ? await updatePlan(activePlanId, inputToSave) : await savePlan(inputToSave);
+			const currentPlanId = data.planId;
+
+			if (pendingUploads.length > 0) {
+				let uploadedAny = false;
+				for (const upload of pendingUploads) {
+					try {
+						const docInfo = await uploadPlanDocument(currentPlanId, {
+							file_name: upload.name,
+							content_type: 'application/pdf',
+							content_base64: upload.base64
+						});
+						inputToSave.protection.policies[upload.index].documentId = docInfo.id || docInfo.data?.id;
+						uploadedAny = true;
+					} catch (err) {
+						console.error("Falha ao fazer upload da apolice", err);
+					}
+				}
+				
+				if (uploadedAny) {
+					data = await updatePlan(currentPlanId, inputToSave);
+				}
+			}
+
+			setActivePlanId(currentPlanId);
 			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
 			setReport(data.report);
 			setFieldErrors({});
 
 			if (isEditingExistingPlan) {
-				navigate(`/dashboard?planId=${data.planId}`, { replace: true });
+				navigate(`/dashboard?planId=${currentPlanId}`, { replace: true });
 				return;
 			}
 
-			if (!planId || planId !== data.planId) {
-				setSearchParams({ planId: data.planId });
+			if (!planId || planId !== currentPlanId) {
+				setSearchParams({ planId: currentPlanId });
 			}
 		} catch (requestError) {
 			const nextFieldErrorsFromRequest = mapRequestErrorToFieldErrors(requestError.message);
@@ -482,6 +645,14 @@ export function InputDataPage() {
 					onFamilyMemberAgeChange={handleFamilyMemberAgeChange}
 					onAddFamilyMember={handleAddFamilyMember}
 					onRemoveFamilyMember={handleRemoveFamilyMember}
+					onAddAsset={handleAddAsset}
+					onRemoveAsset={handleRemoveAsset}
+					onAddLiability={handleAddLiability}
+					onRemoveLiability={handleRemoveLiability}
+					onAddPolicy={handleAddPolicy}
+					onRemovePolicy={handleRemovePolicy}
+					onPolicyFieldChange={handlePolicyFieldChange}
+					onPolicyFileChange={handlePolicyFileChange}
 					fieldErrors={fieldErrors}
 				/>
 			);

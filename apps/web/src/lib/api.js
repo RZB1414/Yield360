@@ -1,5 +1,5 @@
 const productionWorkerUrl = 'https://yield-360-api.yield360app.workers.dev';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '' : productionWorkerUrl);
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || productionWorkerUrl).replace(/\/$/, '');
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -65,4 +65,21 @@ export function getPlan(planId) {
 
 export function getHealth() {
   return request('/api/health');
+}
+
+export function uploadPlanDocument(planId, payload) {
+  return request(`/api/plans/${planId}/documents`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getPlanDocuments(planId) {
+  return request(`/api/plans/${planId}/documents`);
+}
+
+export function deletePlanDocument(documentId) {
+  return request(`/api/documents/${documentId}`, {
+    method: 'DELETE'
+  });
 }

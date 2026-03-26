@@ -177,3 +177,81 @@ export async function listPlans(database) {
 
   return (result.results ?? []).map(toProfileListItem).filter(Boolean);
 }
+
+export async function uploadDocument(database, doc) {
+  const binding = getDatabaseBinding(database);
+
+  await binding
+    .prepare(
+      `INSERT INTO documents (
+        id,
+        plan_id,
+        file_name,
+        content_type,
+        content_base64,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      doc.id,
+      doc.planId,
+      doc.fileName,
+      doc.contentType,
+      doc.contentBase64,
+      doc.createdAt
+    )
+    .run();
+
+  return doc.id;
+}
+
+export async function getDocumentById(database, documentId) {
+  const binding = getDatabaseBinding(database);
+  const row = await binding
+    .prepare(
+      `SELECT
+        id,
+        plan_id as planId,
+        file_name as fileName,
+        content_type as contentType,
+        content_base64 as contentBase64,
+        created_at as createdAt
+      FROM documents
+      WHERE id = ?`
+    )
+    .bind(documentId)
+    .first();
+
+  return row;
+}
+
+export async function deleteDocument(database, documentId) {
+  const binding = getDatabaseBinding(database);
+
+  await binding
+    .prepare('DELETE FROM documents WHERE id = ?')
+    .bind(documentId)
+    .run();
+
+  return documentId;
+}
+
+export async function listDocumentsByPlanId(database, planId) {
+  const binding = getDatabaseBinding(database);
+  const result = await binding
+    .prepare(
+      `SELECT
+        id,
+        plan_id as planId,
+        file_name as fileName,
+        content_type as contentType,
+        created_at as createdAt
+      FROM documents
+      WHERE plan_id = ?
+      ORDER BY created_at DESC`
+    )
+    .bind(planId)
+    .all();
+
+  return result.results ?? [];
+}

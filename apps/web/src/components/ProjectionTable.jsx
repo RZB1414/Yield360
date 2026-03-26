@@ -1,4 +1,4 @@
-import { formatCurrency } from '../lib/formatters.js';
+import { formatTableNumber } from '../lib/formatters.js';
 
 export function ProjectionTable({ rows }) {
   if (!rows?.length) {
@@ -21,12 +21,12 @@ export function ProjectionTable({ rows }) {
           <tbody>
             {rows.map((row) => (
               <tr key={row.age} className="border-t border-slate/8">
-                <td className="px-4 py-3 font-semibold">{row.age}</td>
-                <td className="px-4 py-3">{formatCurrency(row.openingBalance)}</td>
-                <td className="px-4 py-3">{formatCurrency(row.yearlyIncome)}</td>
-                <td className="px-4 py-3">{formatCurrency(row.yearlySpend)}</td>
+                <td className="px-4 py-3 font-semibold">{formatTableNumber(row.age)}</td>
+                <td className="px-4 py-3">{formatTableNumber(row.openingBalance)}</td>
+                <td className="px-4 py-3">{formatTableNumber(row.yearlyIncome)}</td>
+                <td className="px-4 py-3">{formatTableNumber(row.yearlySpend)}</td>
                 <td className={`px-4 py-3 font-semibold ${row.endingBalance < 0 ? 'text-clay' : 'text-deep'}`}>
-                  {formatCurrency(row.endingBalance)}
+                  {formatTableNumber(row.endingBalance)}
                 </td>
               </tr>
             ))}

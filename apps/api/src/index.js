@@ -9,6 +9,12 @@ import {
   handleListPlansRequest,
   handleUpdatePlanRequest
 } from './routes/plans.js';
+import {
+  handleDeleteDocumentRequest,
+  handleGetDocumentRequest,
+  handleListDocumentsRequest,
+  handleUploadDocumentRequest
+} from './routes/documents.js';
 
 function notFoundResponse() {
   return new Response(JSON.stringify({ message: 'Rota nao encontrada.' }), {
@@ -66,6 +72,25 @@ async function routeRequest(request, env) {
 
   if (request.method === 'DELETE' && planMatch) {
     return handleDeletePlanRequest(env, planMatch[1]);
+  }
+
+  const documentMatch = pathname.match(/^\/api\/documents\/([^/]+)$/);
+  const planDocumentsMatch = pathname.match(/^\/api\/plans\/([^/]+)\/documents$/);
+
+  if (request.method === 'GET' && planDocumentsMatch) {
+    return handleListDocumentsRequest(env, planDocumentsMatch[1]);
+  }
+
+  if (request.method === 'POST' && planDocumentsMatch) {
+    return handleUploadDocumentRequest(request, env, planDocumentsMatch[1]);
+  }
+
+  if (request.method === 'GET' && documentMatch) {
+    return handleGetDocumentRequest(env, documentMatch[1]);
+  }
+
+  if (request.method === 'DELETE' && documentMatch) {
+    return handleDeleteDocumentRequest(env, documentMatch[1]);
   }
 
   return notFoundResponse();

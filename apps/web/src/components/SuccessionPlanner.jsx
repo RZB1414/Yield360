@@ -1,7 +1,8 @@
 import { maritalRegimes, maritalStatuses } from '@yield-360/shared';
 import { FormField } from './FormField.jsx';
+import { LocalizedNumberInput } from './LocalizedNumberInput.jsx';
 import { SectionCard } from './SectionCard.jsx';
-import { formatCurrency } from '../lib/formatters.js';
+import { formatTableNumber } from '../lib/formatters.js';
 
 function inputClassName() {
   return 'min-w-0 w-full rounded-[18px] border border-slate/10 bg-white px-3 py-2.5 text-sm leading-tight text-slate outline-none transition focus:border-deep focus:ring-4 focus:ring-deep/10';
@@ -78,7 +79,7 @@ export function SuccessionPlanner({ input, succession, onFieldChange }) {
               <BooleanSelect value={input.succession.hasChildren} onChange={(value) => onFieldChange('succession.hasChildren', value)} />
             </FormField>
             <FormField label="Qtd. de filhos">
-              <input className={inputClassName()} type="number" value={input.succession.childCount} onChange={(event) => onFieldChange('succession.childCount', event.target.value, 'number')} />
+              <LocalizedNumberInput className={inputClassName()} value={input.succession.childCount} onChange={(event) => onFieldChange('succession.childCount', event.target.value, 'number')} fractionDigits={0} min="0" />
             </FormField>
             <FormField label="Ascendentes vivos?">
               <BooleanSelect value={input.succession.parentsAlive} onChange={(value) => onFieldChange('succession.parentsAlive', value)} />
@@ -93,24 +94,24 @@ export function SuccessionPlanner({ input, succession, onFieldChange }) {
           <div className="bg-[#111111] px-3 py-2.5 text-sm font-semibold text-white">2) Patrimonio para calculo</div>
           <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-4">
             <FormField label="Bens COMUNS (aquestos)">
-              <input className={inputClassName()} type="number" step="0.01" value={input.succession.commonAssets} onChange={(event) => onFieldChange('succession.commonAssets', event.target.value, 'number')} />
+              <LocalizedNumberInput className={inputClassName()} value={input.succession.commonAssets} onChange={(event) => onFieldChange('succession.commonAssets', event.target.value, 'number')} step="0.01" />
             </FormField>
             <FormField label="Bens PARTICULARES do falecido">
-              <input className={inputClassName()} type="number" step="0.01" value={input.succession.privateAssets} onChange={(event) => onFieldChange('succession.privateAssets', event.target.value, 'number')} />
+              <LocalizedNumberInput className={inputClassName()} value={input.succession.privateAssets} onChange={(event) => onFieldChange('succession.privateAssets', event.target.value, 'number')} step="0.01" />
             </FormField>
             <FormField label="DIVIDAS dedutiveis do falecido">
-              <input className={inputClassName()} type="number" step="0.01" value={input.succession.debts} onChange={(event) => onFieldChange('succession.debts', event.target.value, 'number')} />
+              <LocalizedNumberInput className={inputClassName()} value={input.succession.debts} onChange={(event) => onFieldChange('succession.debts', event.target.value, 'number')} step="0.01" />
             </FormField>
             <FormField label="Recursos FORA do inventario">
-              <input className={`${inputClassName()} bg-[#f5f7fa]`} readOnly value={formatCurrency((input.succession.lifeInsurance ?? 0) + (input.succession.vgbl ?? 0))} />
+              <input className={`${inputClassName()} bg-[#f5f7fa]`} readOnly value={formatTableNumber((input.succession.lifeInsurance ?? 0) + (input.succession.vgbl ?? 0))} />
             </FormField>
             <div className="md:col-span-2 xl:col-span-2">
               <FormField label="Seguro de vida com beneficiario">
-                <input className={inputClassName()} type="number" step="0.01" value={input.succession.lifeInsurance} onChange={(event) => onFieldChange('succession.lifeInsurance', event.target.value, 'number')} />
+                <LocalizedNumberInput className={inputClassName()} value={input.succession.lifeInsurance} onChange={(event) => onFieldChange('succession.lifeInsurance', event.target.value, 'number')} step="0.01" />
               </FormField>
             </div>
             <FormField label="VGBL / previdencia privada">
-              <input className={inputClassName()} type="number" step="0.01" value={input.succession.vgbl} onChange={(event) => onFieldChange('succession.vgbl', event.target.value, 'number')} />
+              <LocalizedNumberInput className={inputClassName()} value={input.succession.vgbl} onChange={(event) => onFieldChange('succession.vgbl', event.target.value, 'number')} step="0.01" />
             </FormField>
             <FormField label="Tem testamento?">
               <BooleanSelect value={input.succession.hasWill} onChange={(value) => onFieldChange('succession.hasWill', value)} />
@@ -123,12 +124,12 @@ export function SuccessionPlanner({ input, succession, onFieldChange }) {
 
         <div className="mt-4 overflow-hidden rounded-[20px] border border-slate/10 bg-[#fbfcfd]">
           <div className="bg-[#111111] px-3 py-2.5 text-sm font-semibold text-white">3) Calculo automatico</div>
-          <SummaryRow label="Meacao do conjuge/companheiro" value={formatCurrency(succession?.spouseShare ?? 0)} />
-          <SummaryRow label="ESPOLIO BRUTO (vai para inventario)" value={formatCurrency(succession?.grossEstate ?? 0)} />
-          <SummaryRow label="ESPOLIO LIQUIDO (apos dividas)" value={formatCurrency(succession?.netEstate ?? 0)} />
-          <SummaryRow label="CUSTO ESTIMADO DO INVENTARIO (20% da base liquida)" value={formatCurrency(succession?.inventoryCost ?? 0)} />
-          <SummaryRow label="Recursos disponiveis para custas (fora do inventario)" value={formatCurrency(succession?.offInventoryResources ?? 0)} />
-          <SummaryRow label="NECESSIDADE ADICIONAL para inventario" value={formatCurrency(succession?.additionalNeed ?? 0)} />
+          <SummaryRow label="Meacao do conjuge/companheiro" value={formatTableNumber(succession?.spouseShare ?? 0)} />
+          <SummaryRow label="ESPOLIO BRUTO (vai para inventario)" value={formatTableNumber(succession?.grossEstate ?? 0)} />
+          <SummaryRow label="ESPOLIO LIQUIDO (apos dividas)" value={formatTableNumber(succession?.netEstate ?? 0)} />
+          <SummaryRow label="CUSTO ESTIMADO DO INVENTARIO (20% da base liquida)" value={formatTableNumber(succession?.inventoryCost ?? 0)} />
+          <SummaryRow label="Recursos disponiveis para custas (fora do inventario)" value={formatTableNumber(succession?.offInventoryResources ?? 0)} />
+          <SummaryRow label="NECESSIDADE ADICIONAL para inventario" value={formatTableNumber(succession?.additionalNeed ?? 0)} />
         </div>
       </div>
     </SectionCard>

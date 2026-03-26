@@ -1,6 +1,6 @@
 import { AreaTrendChart } from './AreaTrendChart.jsx';
 import { SectionCard } from './SectionCard.jsx';
-import { formatCurrency, formatDateOnly, formatPercent, formatPlainNumber } from '../lib/formatters.js';
+import { formatDateOnly, formatPercent, formatPlainNumber, formatTableNumber } from '../lib/formatters.js';
 
 function panelClassName(backgroundClass = 'bg-white/88') {
   return `${backgroundClass} min-w-0 overflow-hidden rounded-[24px] border border-[#173d5d]/10 shadow-[0_18px_34px_rgba(23,61,93,0.08)]`;
@@ -98,15 +98,15 @@ export function ResultsShowcase({ input, results }) {
                 </div>
                 <div className={metricCardClassName('accent')}>
                   <p className="text-xs leading-snug text-slate/60">Patrimonio atual</p>
-                  <p className={valueClassName('md')}>{formatCurrency(results.currentInvestableAssets)}</p>
+                  <p className={valueClassName('md')}>{formatTableNumber(results.currentInvestableAssets)}</p>
                 </div>
                 <div className={metricCardClassName('success')}>
                   <p className="text-xs leading-snug text-slate/60">Aportes mensais</p>
-                  <p className={valueClassName('md')}>{formatCurrency(input.future.agreedMonthlyContribution)}</p>
+                  <p className={valueClassName('md')}>{formatTableNumber(input.future.agreedMonthlyContribution)}</p>
                 </div>
                 <div className={metricCardClassName('light')}>
                   <p className="text-xs leading-snug text-slate/60">Valor total investido</p>
-                  <p className={valueClassName('md')}>{formatCurrency(results.totalInvested)}</p>
+                  <p className={valueClassName('md')}>{formatTableNumber(results.totalInvested)}</p>
                 </div>
                 <div className={metricCardClassName('dark')}>
                   <p className="text-xs leading-snug text-white/70">Idade atual</p>
@@ -148,19 +148,19 @@ export function ResultsShowcase({ input, results }) {
                 </div>
                 <div className={metricCardClassName('warm')}>
                   <p className="text-xs leading-snug text-slate/60">Valor nominal final</p>
-                  <p className={valueClassName('lg')}>{formatCurrency(results.futureNominalValue)}</p>
+                  <p className={valueClassName('lg')}>{formatTableNumber(results.futureNominalValue)}</p>
                 </div>
                 <div className={metricCardClassName('success')}>
                   <p className="text-xs leading-snug text-slate/60">Valor real final</p>
-                  <p className={valueClassName('lg')}>{formatCurrency(results.futureRealValue)}</p>
+                  <p className={valueClassName('lg')}>{formatTableNumber(results.futureRealValue)}</p>
                 </div>
                 <div className={metricCardClassName('accent')}>
                   <p className="text-xs leading-snug text-slate/60">Retorno nominal</p>
-                  <p className={valueClassName('md')}>{formatCurrency(results.nominalReturn)}</p>
+                  <p className={valueClassName('md')}>{formatTableNumber(results.nominalReturn)}</p>
                 </div>
                 <div className={metricCardClassName('slate')}>
                   <p className="text-xs leading-snug text-slate/60">Retorno real</p>
-                  <p className={valueClassName('md')}>{formatCurrency(results.realReturn)}</p>
+                  <p className={valueClassName('md')}>{formatTableNumber(results.realReturn)}</p>
                 </div>
               </div>
               </div>
@@ -174,7 +174,7 @@ export function ResultsShowcase({ input, results }) {
               title="Projecao de acumulo"
               data={chartRows}
               valueFormatter={(value) =>
-                new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(Math.max(value, 0))
+                formatTableNumber(Math.max(value, 0))
               }
               series={[
                 {

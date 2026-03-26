@@ -1,4 +1,4 @@
-import { formatCurrency, formatPercent } from '../lib/formatters.js';
+import { formatPercent, formatTableNumber } from '../lib/formatters.js';
 
 export function MetricCard({ label, value, accent = 'bg-slate', helper, tone = 'currency' }) {
   const formattedValue =
@@ -6,7 +6,7 @@ export function MetricCard({ label, value, accent = 'bg-slate', helper, tone = '
       ? formatPercent(value)
       : tone === 'number'
         ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(Number(value ?? 0))
-        : formatCurrency(value);
+        : formatTableNumber(value);
 
   return (
     <article className="glass-panel rounded-[26px] border border-white/80 bg-white/78 p-5 shadow-panel">

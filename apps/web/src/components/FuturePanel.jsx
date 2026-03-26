@@ -1,6 +1,6 @@
 import { AreaTrendChart } from './AreaTrendChart.jsx';
 import { SectionCard } from './SectionCard.jsx';
-import { formatCurrency, formatPercent } from '../lib/formatters.js';
+import { formatPercent, formatTableNumber } from '../lib/formatters.js';
 
 function statCard(label, value, tone = 'light', large = false) {
   const tones = {
@@ -66,9 +66,9 @@ export function FuturePanel({ future }) {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
                   {statCard('Taxa de Juros real', formatPercent(future.perpetuityRate), 'success')}
-                  {statCard('Renda passiva potencial (PL)', formatCurrency(future.passivePortfolioIncome), 'success', true)}
-                  {statCard('INSS + Outras receitas', formatCurrency(future.externalMonthlyIncome), 'dark')}
-                  {statCard('Renda passiva potencial (PL + INSS)', formatCurrency(future.combinedMonthlyIncome), 'slate', true)}
+                  {statCard('Renda passiva potencial (PL)', formatTableNumber(future.passivePortfolioIncome), 'success', true)}
+                  {statCard('INSS + Outras receitas', formatTableNumber(future.externalMonthlyIncome), 'dark')}
+                  {statCard('Renda passiva potencial (PL + INSS)', formatTableNumber(future.combinedMonthlyIncome), 'slate', true)}
                 </div>
               </div>
             </div>
@@ -80,8 +80,8 @@ export function FuturePanel({ future }) {
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#355f9b]">Comparativo</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
-                  {statCard('Objetivo Gasto Mensal', formatCurrency(future.desiredMonthlyRetirementSpend), 'dark', true)}
-                  {statCard('Superavit / Deficit', formatCurrency(future.surplusDeficit), future.surplusDeficit >= 0 ? 'success' : 'accent', true)}
+                  {statCard('Objetivo Gasto Mensal', formatTableNumber(future.desiredMonthlyRetirementSpend), 'dark', true)}
+                  {statCard('Superavit / Deficit', formatTableNumber(future.surplusDeficit), future.surplusDeficit >= 0 ? 'success' : 'accent', true)}
                 </div>
               </div>
             </div>
@@ -94,7 +94,7 @@ export function FuturePanel({ future }) {
                 className="min-h-full rounded-[22px]"
                 data={chartRows}
                 valueFormatter={(value) =>
-                  new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(Math.abs(value))
+                  formatTableNumber(Math.abs(value))
                 }
                 series={[
                   {

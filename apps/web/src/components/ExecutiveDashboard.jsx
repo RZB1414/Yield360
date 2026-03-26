@@ -1,6 +1,6 @@
 import { ProtectionChecklist } from './ProtectionChecklist.jsx';
 import { SectionCard } from './SectionCard.jsx';
-import { formatCurrency, formatPercent } from '../lib/formatters.js';
+import { formatPercent, formatTableNumber } from '../lib/formatters.js';
 
 function glassPanelClassName() {
   return 'rounded-[20px] border border-[#173d5d]/10 bg-white shadow-[0_18px_36px_rgba(23,61,93,0.08)]';
@@ -54,7 +54,7 @@ function ComparisonBars({ title, rows }) {
             <div key={row.label} className="grid gap-1.5">
               <div className="flex items-center justify-between gap-3 text-xs text-slate/65">
                 <span className="leading-snug">{row.label}</span>
-                <span className="font-semibold text-[#173d5d]">{formatCurrency(row.value)}</span>
+                <span className="font-semibold text-[#173d5d]">{formatTableNumber(row.value)}</span>
               </div>
               <div className="h-3.5 overflow-hidden rounded-full bg-[#e8eef5]">
                 <div className="h-full rounded-full" style={{ width, backgroundColor: row.color }} />
@@ -227,28 +227,28 @@ export function ExecutiveDashboard({ input, control, succession }) {
                 <tbody>
                   <tr className="border-t border-[#173d5d]/10 bg-[#eef4fb] font-semibold text-[#173d5d]">
                     <td className="px-3 py-2.5">Acordado por mes</td>
-                    <td className="px-3 py-2.5 text-right">{formatCurrency(input.future.agreedMonthlyContribution)}</td>
+                    <td className="px-3 py-2.5 text-right">{formatTableNumber(input.future.agreedMonthlyContribution)}</td>
                   </tr>
                   <tr className="border-t border-[#173d5d]/10 bg-[#eef4fb] font-semibold text-[#173d5d]">
                     <td className="px-3 py-2.5">Acordado total</td>
-                    <td className="px-3 py-2.5 text-right">{formatCurrency(control.agreedContributionTarget)}</td>
+                    <td className="px-3 py-2.5 text-right">{formatTableNumber(control.agreedContributionTarget)}</td>
                   </tr>
                   <tr className="border-t border-[#173d5d]/10">
                     <td className="px-3 py-2.5">Total aportado</td>
-                    <td className="px-3 py-2.5 text-right">{formatCurrency(control.totalContributed)}</td>
+                    <td className="px-3 py-2.5 text-right">{formatTableNumber(control.totalContributed)}</td>
                   </tr>
                   <tr className="border-t border-[#173d5d]/10 bg-[#fbe8e5] text-[#8c2f1f]">
                     <td className="px-3 py-2.5">Quanto falta</td>
-                    <td className="px-3 py-2.5 text-right">{formatCurrency(control.remainingContributionGap)}</td>
+                    <td className="px-3 py-2.5 text-right">{formatTableNumber(control.remainingContributionGap)}</td>
                   </tr>
                   <tr className="border-t border-[#173d5d]/10 bg-[#f6f0c8] text-[#5f5400]">
                     <td className="px-3 py-2.5">Quanto superou</td>
-                    <td className="px-3 py-2.5 text-right">{formatCurrency(control.contributionOverage)}</td>
+                    <td className="px-3 py-2.5 text-right">{formatTableNumber(control.contributionOverage)}</td>
                   </tr>
                   {control.monthlyContributions.map((item) => (
                     <tr key={item.month} className="border-t border-[#173d5d]/10 odd:bg-white even:bg-[#f8fbff]">
                       <td className="px-3 py-2.5">{item.month}</td>
-                      <td className="px-3 py-2.5 text-right">{formatCurrency(item.amount)}</td>
+                      <td className="px-3 py-2.5 text-right">{formatTableNumber(item.amount)}</td>
                     </tr>
                   ))}
                 </tbody>

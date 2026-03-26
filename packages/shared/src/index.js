@@ -1,4 +1,4 @@
-export const investorProfiles = ['Conservador', 'Moderado', 'Arrojado'];
+export const investorProfiles = ['Conservador', 'Moderado', 'Arrojado', 'Agressivo'];
 
 export const maritalRegimes = [
   'Nao Aplicavel',
@@ -27,6 +27,20 @@ export const familyRelationshipOptions = [
   'Outro'
 ];
 
+export const lifePhaseOptions = [
+  'Acúmulo de Patrimônio',
+  'Preservação de Patrimônio',
+  'Usufruto'
+];
+
+export const financialCapacityOptions = [
+  'Costuma resgatar',
+  'Não resgata',
+  'Nem Aporta',
+  'Aporta sem recorrência',
+  'Aporta com recorrência'
+];
+
 export const protectionLayerFields = [
   { key: 're100', label: 'RE - 100%' },
   { key: 'assetAllocation', label: 'Asset Allocation' },
@@ -52,15 +66,10 @@ export const defaultPlannerInput = {
   },
   vision360: {
     assets: {
-      financial: 0,
-      immobilized: 0,
-      other: 0
+      items: []
     },
     liabilities: {
-      loans: 0,
-      financing: 0,
-      consortiums: 0,
-      other: 0
+      items: []
     },
     budget: {
       workRegime: '',
@@ -120,7 +129,8 @@ export const defaultPlannerInput = {
     dependentEducationInterest: false,
     dependentEducationYears: 0,
     dependentEducationMonthlyAid: 0,
-    dependentEducationIdealCoverage: 0
+    dependentEducationIdealCoverage: 0,
+    policies: []
   },
   succession: {
     maritalStatus: '',
