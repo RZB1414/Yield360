@@ -1,6 +1,9 @@
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ProtectionChecklist } from './ProtectionChecklist.jsx';
 import { SectionCard } from './SectionCard.jsx';
 import { formatPercent, formatTableNumber } from '../lib/formatters.js';
+import { getPlanDocument } from '../lib/api.js';
 
 function glassPanelClassName() {
   return 'rounded-[20px] border border-[#173d5d]/10 bg-white shadow-[0_18px_36px_rgba(23,61,93,0.08)]';
@@ -8,13 +11,13 @@ function glassPanelClassName() {
 
 function introPanel() {
   return (
-    <div className="rounded-[24px] border border-[#173d5d]/12 bg-[linear-gradient(135deg,#f7fbff_0%,#edf5fd_100%)] px-5 py-4 shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="rounded-[24px] border border-[#173d5d]/12 bg-[linear-gradient(135deg,#f7fbff_0%,#edf5fd_100%)] px-4 sm:px-5 py-3 sm:py-4 shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end sm:justify-between gap-2 sm:gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#355f9b]">Painel executivo</p>
-          <p className="mt-1 text-xl font-semibold text-[#173d5d]">Legado, protecao e disciplina de aportes</p>
+          <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] text-[#355f9b]">Painel executivo</p>
+          <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-semibold text-[#173d5d]">Legado, protecao e disciplina de aportes</p>
         </div>
-        <p className="text-sm text-slate/60">Mesmas informacoes, com leitura consolidada e mais limpa</p>
+        <p className="text-xs sm:text-sm text-slate/60">Mesmas informacoes, com leitura consolidada e mais limpa</p>
       </div>
     </div>
   );
@@ -169,10 +172,111 @@ function FutureGauge({ value }) {
   );
 }
 
+function PolicyDetailsModal({ policy, onClose }) {
+  const [opening, setOpening] = useState(false);
+
+  if (!policy) return null;
+
+  async function handleOpenPdf() {
+    if (!policy.documentId) return;
+
+    setOpening(true);
+    try {
+      const data = await getPlanDocument(policy.documentId);
+      const base64Content = data.contentBase64;
+      const contentType = data.contentType || 'application/pdf';
+
+      // Remove data:application/pdf;base64, if exists
+      const pureBase64 = base64Content.includes('base64,')
+        ? base64Content.split('base64,')[1]
+        : base64Content;
+
+      const byteCharacters = atob(pureBase64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch (error) {
+      console.error('Falha ao abrir o PDF:', error);
+      alert('Não foi possível abrir o arquivo PDF.');
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg rounded-[32px] border border-[#173d5d]/12 bg-white p-8 shadow-[0_24px_48px_rgba(23,61,93,0.18)]">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-xl font-semibold text-[#173d5d]">Detalhes da Cobertura</h3>
+          <button onClick={onClose} className="rounded-full p-2 hover:bg-slate/5 transition">
+            <svg className="h-6 w-6 text-slate/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="grid gap-4">
+          <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
+            <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Nome da Cobertura</p>
+            <p className="text-[#173d5d] font-medium">{policy.name || 'Nao informado'}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
+              <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Seguradora</p>
+              <p className="text-[#173d5d] font-medium">{policy.company || 'Nao informada'}</p>
+            </div>
+            <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
+              <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Prazo</p>
+              <p className="text-[#173d5d] font-medium">{policy.years ? `${policy.years} anos` : 'Nao informado'}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
+            <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Valor Segurado</p>
+            <p className="text-lg text-[#173d5d] font-semibold">{formatTableNumber(policy.value)}</p>
+          </div>
+
+          {policy.documentId && (
+            <button
+              type="button"
+              onClick={handleOpenPdf}
+              disabled={opening}
+              className="mt-4 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#173d5d] py-4 font-semibold text-white shadow-lg shadow-[#173d5d]/20 hover:bg-[#1e4b6f] transition disabled:opacity-50"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              {opening ? 'Abrindo...' : 'Visualizar Documento PDF'}
+            </button>
+          )}
+        </div>
+
+        <button
+          onClick={onClose}
+          className="mt-6 w-full py-3 text-sm font-semibold text-slate/40 hover:text-slate/60 transition"
+        >
+          Fechar
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export function ExecutiveDashboard({ input, control, succession }) {
+  const [selectedPolicy, setSelectedPolicy] = useState(null);
+
   if (!control) {
     return null;
   }
+
+  const policies = input.protection?.policies || [];
 
   return (
     <SectionCard
@@ -184,13 +288,15 @@ export function ExecutiveDashboard({ input, control, succession }) {
         {introPanel()}
 
         <div className="mt-4 grid gap-3 xl:grid-cols-[0.33fr_0.33fr_0.33fr]">
-          <ProtectionColumns
-            protectionLayers={control.protectionLayers}
-            needCount={control.needCount}
-            coveredCount={control.coveredCount}
-          />
+          <div className="min-w-0">
+            <ProtectionColumns
+              protectionLayers={control.protectionLayers}
+              needCount={control.needCount}
+              coveredCount={control.coveredCount}
+            />
+          </div>
 
-          <div className="grid gap-3">
+          <div className="grid gap-3 min-w-0">
             <ProgressBar value={control.contributedProgress} />
             <ComparisonBars
               title="Indicadores de legado e protecao"
@@ -210,13 +316,15 @@ export function ExecutiveDashboard({ input, control, succession }) {
             />
           </div>
 
-          <FutureGauge value={control.financialFreedomProgress} />
+          <div className="min-w-0 flex justify-center">
+            <FutureGauge value={control.financialFreedomProgress} />
+          </div>
         </div>
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[0.4fr_0.6fr]">
-          <div className={`${glassPanelClassName()} p-4`}>
+          <div className={`${glassPanelClassName()} p-4 min-w-0`}>
             <p className="mb-3 text-base font-semibold text-[#173d5d]">Aportes acordados</p>
-            <div className="overflow-hidden rounded-[16px] border border-[#173d5d]/10 bg-[#fbfdff]">
+            <div className="overflow-x-auto overflow-y-hidden rounded-[16px] border border-[#173d5d]/10 bg-[#fbfdff]">
               <table className="min-w-full border-collapse text-xs text-slate md:text-sm">
                 <thead className="bg-[#355f9b]">
                   <tr>
@@ -258,6 +366,60 @@ export function ExecutiveDashboard({ input, control, succession }) {
 
           <ProtectionChecklist checklist={control.protectionLayers} />
         </div>
+
+        {policies.length > 0 && (
+          <div className="mt-4">
+            <div className={`${glassPanelClassName()} p-4 sm:p-6`}>
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#355f9b]">Proteção e Garantias</p>
+                  <h3 className="text-lg font-semibold text-[#173d5d]">Coberturas e Apólices</h3>
+                </div>
+                <span className="rounded-full bg-[#eef4fb] px-3 py-1 text-xs font-semibold text-[#355f9b]">
+                  {policies.length} {policies.length === 1 ? 'cobertura' : 'coberturas'}
+                </span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {policies.map((policy) => (
+                  <button
+                    type="button"
+                    key={policy.id}
+                    onClick={() => setSelectedPolicy(policy)}
+                    className="flex flex-col rounded-xl border border-[#173d5d]/8 bg-[#fbfdff] px-3 py-2 text-left shadow-sm transition hover:border-[#173d5d]/20 hover:shadow-md group"
+                  >
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <div className="shrink-0 rounded bg-[#173d5d]/5 p-1 group-hover:bg-[#173d5d]/10 transition">
+                          <svg className="h-3 w-3 text-[#173d5d]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                          </svg>
+                        </div>
+                        <p className="truncate text-sm font-semibold text-[#173d5d]">{policy.name || 'Cobertura'}</p>
+                      </div>
+                      <p className="shrink-0 text-base font-bold text-[#173d5d]">{formatTableNumber(policy.value)}</p>
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between pl-[18px]">
+                      <p className="text-[11px] text-slate/40 uppercase tracking-wider truncate">{policy.company || 'Seguradora'}</p>
+                    {policy.documentId && (
+                      <svg className="h-2.5 w-2.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A1 1 0 0111.293 2.707l5 5a1 1 0 01.293.707V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedPolicy && (
+          <PolicyDetailsModal
+            policy={selectedPolicy}
+            onClose={() => setSelectedPolicy(null)}
+          />
+        )}
       </div>
     </SectionCard>
   );

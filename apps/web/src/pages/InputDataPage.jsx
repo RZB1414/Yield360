@@ -162,11 +162,10 @@ function TabButton({ active, label, description, onClick }) {
 		<button
 			type="button"
 			onClick={onClick}
-			className={`rounded-[24px] border px-5 py-4 text-left transition ${
-				active
-					? 'border-[#173d5d] bg-[#173d5d] text-white shadow-[0_18px_40px_rgba(23,61,93,0.28)]'
-					: 'border-slate/10 bg-white text-slate hover:border-[#173d5d]/30'
-			}`}
+			className={`rounded-[24px] border px-5 py-4 text-left transition ${active
+				? 'border-[#173d5d] bg-[#173d5d] text-white shadow-[0_18px_40px_rgba(23,61,93,0.28)]'
+				: 'border-slate/10 bg-white text-slate hover:border-[#173d5d]/30'
+				}`}
 		>
 			<p className="font-semibold uppercase tracking-[0.16em]">{label}</p>
 			<p className={`mt-2 text-sm ${active ? 'text-white/72' : 'text-slate/64'}`}>{description}</p>
@@ -282,14 +281,24 @@ export function InputDataPage() {
 				}
 			}
 
-			if (path === 'client.investorProfile' || path === 'profileValidation.suggestedProfile') {
-				const otherPath = path === 'client.investorProfile' ? 'profileValidation.suggestedProfile' : 'client.investorProfile';
-				nextState = updateNestedValue(nextState, otherPath, value);
+			if (
+				path === 'client.investorProfile' || 
+				path === 'profileValidation.suggestedProfile' || 
+				path === 'future.inflationRate' ||
+				path === 'profileValidation.benchmarkRate'
+			) {
+				const isProfileUpdate = path === 'client.investorProfile' || path === 'profileValidation.suggestedProfile';
+				const profileValue = isProfileUpdate ? value : nextState.client.investorProfile;
+
+				if (isProfileUpdate) {
+					const otherPath = path === 'client.investorProfile' ? 'profileValidation.suggestedProfile' : 'client.investorProfile';
+					nextState = updateNestedValue(nextState, otherPath, value);
+				}
 
 				const profileConfigs = {
 					'Conservador': {
 						emotionalCapacity: 'Não tolera perdas',
-						benchmarkLabel: 'IPCA+ 4,0%',
+						benchmarkLabel: 'IPCA+ 4%',
 						benchmarkRate: 4,
 						term: '1 ano - 3 anos'
 					},
@@ -307,18 +316,25 @@ export function InputDataPage() {
 					},
 					'Agressivo': {
 						emotionalCapacity: 'Tolera quedas significativas (> -15%)',
-						benchmarkLabel: 'IPCA+ 7%',
-						benchmarkRate: 7,
+						benchmarkLabel: 'IPCA+ 8%',
+						benchmarkRate: 8,
 						term: '+ 7 anos'
 					}
 				};
 
-				const config = profileConfigs[value];
+				const config = profileConfigs[profileValue];
 				if (config) {
-					nextState = updateNestedValue(nextState, 'profileValidation.emotionalCapacity', config.emotionalCapacity);
-					nextState = updateNestedValue(nextState, 'profileValidation.benchmarkLabel', config.benchmarkLabel);
-					nextState = updateNestedValue(nextState, 'profileValidation.benchmarkRate', config.benchmarkRate, 'number');
-					nextState = updateNestedValue(nextState, 'profileValidation.term', config.term);
+					if (isProfileUpdate) {
+						nextState = updateNestedValue(nextState, 'profileValidation.emotionalCapacity', config.emotionalCapacity);
+						nextState = updateNestedValue(nextState, 'profileValidation.benchmarkLabel', config.benchmarkLabel);
+						nextState = updateNestedValue(nextState, 'profileValidation.benchmarkRate', config.benchmarkRate, 'number');
+						nextState = updateNestedValue(nextState, 'profileValidation.term', config.term);
+					}
+
+					const realRate = Number(nextState.profileValidation.benchmarkRate ?? config.benchmarkRate) / 100;
+					const inflationRate = Number(nextState.future.inflationRate ?? 0) / 100;
+					const nominalRate = ((1 + realRate) * (1 + inflationRate) - 1) * 100;
+					nextState = updateNestedValue(nextState, 'future.nominalAnnualRate', nominalRate, 'number');
 				}
 			}
 
@@ -491,6 +507,14 @@ export function InputDataPage() {
 		scrollToField(firstInvalidPath);
 	}
 
+	function handleCloseClient() {
+		setActivePlanId('');
+		setInput(createEmptyPlannerInput());
+		setReport(null);
+		setFieldErrors({});
+		navigate('/dashboard');
+	}
+
 	async function handleAnalyze() {
 		setAnalyzing(true);
 		setError('');
@@ -551,7 +575,7 @@ export function InputDataPage() {
 						console.error("Falha ao fazer upload da apolice", err);
 					}
 				}
-				
+
 				if (uploadedAny) {
 					data = await updatePlan(currentPlanId, inputToSave);
 				}
@@ -659,7 +683,7 @@ export function InputDataPage() {
 		}
 
 		if (activeTab === 'resultados') {
-			return <ResultsShowcase input={input} results={results} />;
+			return <ResultsShowcase input={input} results={results} onFieldChange={handleFieldChange} readOnly={false} />;
 		}
 
 		if (activeTab === 'futuro') {
@@ -674,57 +698,47 @@ export function InputDataPage() {
 	}
 
 	return (
-		<div className="grid gap-6">
-			<SectionCard
-				eyebrow={activePlanId ? 'Editar cliente' : 'Adicionar cliente'}
-				title={activePlanId ? 'Edicao do cadastro e simulacao' : 'Novo cliente'}
-				description="Os campos iniciam vazios. Valores numericos iguais a zero ficam em branco para o preenchimento manual, e o mesmo formulario serve para criar ou editar clientes."
-			>
-				<div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-					<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-						{plannerSections.map((section) => (
-							<TabButton
-								key={section.id}
-								active={activeTab === section.id}
-								label={section.title}
-								description={section.description}
-								onClick={() => setActiveTab(section.id)}
-							/>
-						))}
-					</div>
+		<div className="flex flex-col gap-6 w-full min-w-0">
+			<div className="flex flex-col xl:grid gap-6 xl:grid-cols-[1.2fr_0.8fr] w-full min-w-0">
+				<div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-w-0">
+					{plannerSections.map((section) => (
+						<TabButton
+							key={section.id}
+							active={activeTab === section.id}
+							label={section.title}
+							description={section.description}
+							onClick={() => setActiveTab(section.id)}
+						/>
+					))}
+				</div>
 
-					<div className="grid gap-3 rounded-[28px] border border-slate/10 bg-[#173d5d] p-5 text-white">
-						<div className="flex items-center justify-between gap-3">
-							<span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/70">Estado da API</span>
-							<span className={`rounded-full px-3 py-1 text-xs font-semibold ${health?.database?.pingOk ? 'bg-white/15 text-white' : 'bg-[#f67a42] text-white'}`}>
-								{health?.database?.pingOk ? 'Online' : 'A verificar'}
-							</span>
-						</div>
-						<p className="font-display text-4xl">{report?.summary?.clientName || input.client.name || 'Novo cliente'}</p>
-						<p className="text-sm text-white/74">
-							{report
-								? `Ultimo calculo: ${formatDate(report.generatedAt)} · Perfil ${report.summary.investorProfile || 'Nao informado'}`
-								: 'Preencha os dados para gerar o snapshot do cliente.'}
-						</p>
-						<LastContactBadge lastContactAt={lastContactAt} />
-						<div className="mt-2 flex flex-wrap gap-3">
-							<button
-								type="button"
-								onClick={handleAnalyze}
-								disabled={analyzing || saving || loading}
-								className="rounded-full bg-white px-5 py-3 font-semibold text-slate transition hover:bg-[#eef2f5] disabled:cursor-not-allowed disabled:opacity-60"
-							>
-								{analyzing ? 'A calcular...' : 'Calcular plano'}
-							</button>
-							<button
-								type="button"
-								onClick={handleSave}
-								disabled={saving || analyzing || loading}
-								className="rounded-full border border-white/20 bg-white/10 px-5 py-3 font-semibold text-white transition hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-60"
-							>
-								{saving ? 'A guardar...' : activePlanId ? 'Atualizar cliente' : 'Guardar cliente'}
-							</button>
-							{activePlanId ? (
+				<div className="min-w-0 shrink-0 grid gap-3 rounded-[28px] border border-slate/10 bg-[#173d5d] p-5 text-white">
+					<p className="font-display text-4xl">{report?.summary?.clientName || input.client.name || 'Novo cliente'}</p>
+					<p className="text-sm text-white/74">
+						{report
+							? `Ultimo calculo: ${formatDate(report.generatedAt)} · Perfil ${report.summary.investorProfile || 'Nao informado'}`
+							: 'Preencha os dados para gerar o snapshot do cliente.'}
+					</p>
+					<LastContactBadge lastContactAt={lastContactAt} />
+					<div className="mt-2 flex flex-wrap gap-3">
+						<button
+							type="button"
+							onClick={handleAnalyze}
+							disabled={analyzing || saving || loading}
+							className="rounded-full bg-white px-5 py-3 font-semibold text-slate transition hover:bg-[#eef2f5] disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							{analyzing ? 'A calcular...' : 'Calcular plano'}
+						</button>
+						<button
+							type="button"
+							onClick={handleSave}
+							disabled={saving || analyzing || loading}
+							className="rounded-full border border-white/20 bg-white/10 px-5 py-3 font-semibold text-white transition hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							{saving ? 'A guardar...' : activePlanId ? 'Atualizar cliente' : 'Guardar cliente'}
+						</button>
+						{activePlanId ? (
+							<>
 								<button
 									type="button"
 									onClick={handleUpdateLastContact}
@@ -733,19 +747,29 @@ export function InputDataPage() {
 								>
 									Atualizar ultimo contato
 								</button>
-							) : null}
-						</div>
-						{error ? <p className="text-sm text-[#ffd5c6]">{error}</p> : null}
+								<button
+									type="button"
+									onClick={handleCloseClient}
+									disabled={saving || analyzing || loading}
+									className="rounded-full border border-white/20 bg-white/10 px-5 py-3 font-semibold text-white transition hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									Fechar cliente
+								</button>
+							</>
+						) : null}
 					</div>
+					{error ? <p className="text-sm text-[#ffd5c6]">{error}</p> : null}
 				</div>
-			</SectionCard>
+			</div>
 
 			{loading ? (
 				<SectionCard title="A carregar cliente">
 					<p className="text-sm text-slate/65">A carregar dados do cliente selecionado...</p>
 				</SectionCard>
 			) : (
-				renderActiveTab()
+				<div className="min-w-0 w-full">
+					{renderActiveTab()}
+				</div>
 			)}
 		</div>
 	);

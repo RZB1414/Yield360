@@ -4,6 +4,10 @@ import { parseLocalizedNumber } from './formatters.js';
 export function hydratePlannerInput(payload = {}) {
   const defaults = cloneDefaultPlannerInput();
 
+  if (defaults.future) {
+    defaults.future.inflationRate = 6;
+  }
+
   return {
     ...defaults,
     ...payload,
@@ -120,6 +124,8 @@ export function updateNestedValue(currentState, path, rawValue, type = 'text') {
     cursor = cursor[segments[index]];
   }
 
-  cursor[segments.at(-1)] = type === 'number' ? (rawValue === '' ? 0 : Number(parseLocalizedNumber(rawValue))) : rawValue;
+  cursor[segments.at(-1)] = type === 'number'
+    ? (typeof rawValue === 'number' ? rawValue : (rawValue === '' ? 0 : Number(parseLocalizedNumber(rawValue))))
+    : rawValue;
   return nextState;
 }

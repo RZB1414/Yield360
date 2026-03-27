@@ -11,7 +11,8 @@ export function getKnownErrorResponse(error) {
   if (/d1|sqlite|database is locked|no such table|cannot start a transaction within a transaction/i.test(details)) {
     return {
       status: 503,
-      message: 'Nao foi possivel aceder a base de dados D1.'
+      message: 'Nao foi possivel aceder a base de dados D1.',
+      details: error.message
     };
   }
 

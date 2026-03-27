@@ -9,12 +9,20 @@ import {
   handleListPlansRequest,
   handleUpdatePlanRequest
 } from './routes/plans.js';
+
 import {
   handleDeleteDocumentRequest,
   handleGetDocumentRequest,
   handleListDocumentsRequest,
   handleUploadDocumentRequest
 } from './routes/documents.js';
+
+import {
+  handleListContactHistoryRequest,
+  handleAddContactHistoryRequest,
+  handleUpdateContactHistoryRequest,
+  handleDeleteContactHistoryRequest
+} from './routes/contact-history.js';
 
 function notFoundResponse() {
   return new Response(JSON.stringify({ message: 'Rota nao encontrada.' }), {
@@ -60,7 +68,11 @@ async function routeRequest(request, env) {
     return handleAnalyzePlanRequest(request);
   }
 
+
   const planMatch = pathname.match(/^\/api\/plans\/([^/]+)$/);
+  const contactHistoryMatch = pathname.match(/^\/api\/plans\/([^/]+)\/contact-history$/);
+  const contactHistoryItemMatch = pathname.match(/^\/api\/plans\/([^/]+)\/contact-history\/([^/]+)$/);
+
 
   if (request.method === 'GET' && planMatch) {
     return handleGetPlanRequest(env, planMatch[1]);
@@ -72,6 +84,20 @@ async function routeRequest(request, env) {
 
   if (request.method === 'DELETE' && planMatch) {
     return handleDeletePlanRequest(env, planMatch[1]);
+  }
+
+  // Contact history REST endpoints
+  if (request.method === 'GET' && contactHistoryMatch) {
+    return handleListContactHistoryRequest(env, contactHistoryMatch[1]);
+  }
+  if (request.method === 'POST' && contactHistoryMatch) {
+    return handleAddContactHistoryRequest(request, env, contactHistoryMatch[1]);
+  }
+  if (request.method === 'PATCH' && contactHistoryItemMatch) {
+    return handleUpdateContactHistoryRequest(request, env, contactHistoryItemMatch[1], contactHistoryItemMatch[2]);
+  }
+  if (request.method === 'DELETE' && contactHistoryItemMatch) {
+    return handleDeleteContactHistoryRequest(env, contactHistoryItemMatch[1], contactHistoryItemMatch[2]);
   }
 
   const documentMatch = pathname.match(/^\/api\/documents\/([^/]+)$/);

@@ -7,6 +7,8 @@
     "dev": "wrangler dev --local --port 8787",
     "build": "node ../../scripts/cloudflare-deploy.mjs api-build",
     "deploy": "node ../../scripts/cloudflare-deploy.mjs api-deploy",
+    "migrate": "wrangler d1 migrations apply yield-360-db --remote",
+    "migrate:local": "wrangler d1 migrations apply yield-360-db --local",
     "lint": "node --check src/index.js"
   },
   "dependencies": {

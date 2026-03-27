@@ -78,6 +78,10 @@ export function getPlanDocuments(planId) {
   return request(`/api/plans/${planId}/documents`);
 }
 
+export function getPlanDocument(documentId) {
+  return request(`/api/documents/${documentId}`);
+}
+
 export function deletePlanDocument(documentId) {
   return request(`/api/documents/${documentId}`, {
     method: 'DELETE'

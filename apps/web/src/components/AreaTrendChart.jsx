@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 function buildAreaPath(points, baselineY) {
   if (!points.length) {
     return '';
@@ -29,8 +31,12 @@ export function AreaTrendChart({
   height = 320,
   yTicks = 5,
   valueFormatter = (value) => value,
-  className = ''
+  className = '',
+  hideFloatingTooltip = false
 }) {
+  const [hoverIndex, setHoverIndex] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
   if (!data.length || !series.length) {
     return null;
   }
@@ -65,10 +71,32 @@ export function AreaTrendChart({
     return domainMax - (domainMax - domainMin) * ratio;
   });
 
+  const handleMouseMove = (e) => {
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = ((e.clientX - rect.left) / rect.width) * width;
+    
+    // Find nearest point
+    const ratio = (mouseX - padding.left) / drawableWidth;
+    const index = Math.round(ratio * (data.length - 1));
+
+    if (index >= 0 && index < data.length) {
+      setHoverIndex(index);
+      setMousePos({ x: e.clientX, y: e.clientY });
+    } else {
+      setHoverIndex(null);
+    }
+  };
+
   return (
-    <div className={`rounded-[26px] border border-slate/10 bg-white p-5 shadow-[0_18px_45px_rgba(23,38,50,0.08)] ${className}`}>
-      {title ? <p className="mb-4 text-center font-display text-3xl text-slate/70">{title}</p> : null}
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full overflow-visible">
+    <div className={`relative min-w-0 rounded-[26px] border border-slate/10 bg-white p-4 sm:p-5 shadow-[0_18px_45px_rgba(23,38,50,0.08)] ${className}`}>
+      {title ? <p className="mb-4 text-center font-display text-2xl sm:text-3xl text-slate/70">{title}</p> : null}
+      <svg 
+        viewBox={`0 0 ${width} ${height}`} 
+        className="h-auto w-full overflow-visible touch-none"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIndex(null)}
+      >
         {tickValues.map((tickValue) => {
           const y = yPosition(tickValue);
 
@@ -84,6 +112,11 @@ export function AreaTrendChart({
 
         {data.map((item, index) => {
           const x = xPosition(index);
+
+          // Only show labels every few years to avoid crowding
+          const shouldShowLabel = data.length < 15 || index % Math.ceil(data.length / 10) === 0 || index === data.length - 1;
+
+          if (!shouldShowLabel) return null;
 
           return (
             <text
@@ -114,15 +147,78 @@ export function AreaTrendChart({
             </g>
           );
         })}
+
+        {hoverIndex !== null && (
+          <g>
+            <line 
+              x1={xPosition(hoverIndex)} 
+              y1={padding.top} 
+              x2={xPosition(hoverIndex)} 
+              y2={height - padding.bottom} 
+              stroke="#173d5d" 
+              strokeWidth="1" 
+              strokeDasharray="4 4" 
+              opacity="0.5"
+            />
+            {series.map((entry) => (
+              <circle
+                key={entry.key}
+                cx={xPosition(hoverIndex)}
+                cy={yPosition(data[hoverIndex][entry.key])}
+                r="4.5"
+                fill="white"
+                stroke={entry.stroke}
+                strokeWidth="2"
+              />
+            ))}
+          </g>
+        )}
       </svg>
+      
+      {hoverIndex !== null && !hideFloatingTooltip && (
+        <div 
+          className="pointer-events-none fixed z-50 rounded-xl border border-slate/12 bg-white/95 p-3 shadow-xl backdrop-blur-sm"
+          style={{ 
+            left: mousePos.x + 15, 
+            top: mousePos.y - 10,
+            transform: 'translateY(-50%)' 
+          }}
+        >
+          <p className="mb-2 border-b border-slate/8 pb-1 text-[11px] font-bold uppercase tracking-wider text-slate/50">
+            Idade: {data[hoverIndex][xKey]} anos
+          </p>
+          <div className="space-y-1.5">
+            {series.map((entry) => (
+              <div key={entry.key} className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.stroke }} />
+                  <span className="text-xs text-slate/70">{entry.label}</span>
+                </div>
+                <span className="font-display text-sm font-semibold text-[#173d5d]">
+                  {valueFormatter(data[hoverIndex][entry.key])}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 flex flex-wrap justify-center gap-5">
         {series.map((entry) => (
           <div key={entry.key} className="flex items-center gap-2 text-sm text-slate/72">
             <span className="h-3 w-3 rounded-full" style={{ backgroundColor: entry.stroke }} />
-            <span>{entry.label}</span>
+            <span className="font-semibold">{entry.label}:</span>
+            <span className={hoverIndex !== null ? "font-display font-bold text-[#173d5d]" : "text-slate/60"}>
+              {hoverIndex !== null ? valueFormatter(data[hoverIndex][entry.key]) : '---'}
+              {hoverIndex !== null && (
+                <span className="ml-1 text-[11px] font-normal text-slate/50">
+                  ({data[hoverIndex][xKey]} anos)
+                </span>
+              )}
+            </span>
           </div>
         ))}
       </div>
     </div>
   );
-}
+}

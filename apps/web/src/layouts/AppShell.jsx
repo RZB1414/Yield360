@@ -16,7 +16,7 @@ export function AppShell({ children }) {
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-clay">Yield 360</p>
                 <Link to="/" className="mt-2 block font-display text-[2.15rem] leading-none tracking-tight text-slate sm:text-[2.75rem]">
-                  Yield 360
+                  Portfell - Hub
                 </Link>
                 <p className="mt-3 text-sm font-medium uppercase tracking-[0.18em] text-slate/58">
                   Clients Management

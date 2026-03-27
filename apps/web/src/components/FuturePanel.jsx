@@ -25,13 +25,13 @@ function frameClassName() {
 
 function introPanel(kicker, title, description) {
   return (
-    <div className="rounded-[24px] border border-[#173d5d]/12 bg-[linear-gradient(135deg,#f7fbff_0%,#edf5fd_100%)] px-5 py-4 shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="rounded-[24px] border border-[#173d5d]/12 bg-[linear-gradient(135deg,#f7fbff_0%,#edf5fd_100%)] px-4 sm:px-5 py-3 sm:py-4 shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end sm:justify-between gap-2 sm:gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#355f9b]">{kicker}</p>
-          <p className="mt-1 text-xl font-semibold text-[#173d5d]">{title}</p>
+          <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] text-[#355f9b]">{kicker}</p>
+          <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-semibold text-[#173d5d]">{title}</p>
         </div>
-        <p className="text-sm text-slate/60">{description}</p>
+        <p className="text-xs sm:text-sm text-slate/60">{description}</p>
       </div>
     </div>
   );
@@ -57,7 +57,7 @@ export function FuturePanel({ future }) {
         {introPanel('Aposentadoria e usufruto', 'Fase de usufruto', 'Leitura consolidada da renda passiva, receitas extras e gasto alvo')}
 
         <div className="grid gap-4 xl:grid-cols-[0.42fr_0.58fr]">
-          <div className="grid gap-4">
+          <div className="grid gap-4 min-w-0">
             <div className={frameClassName()}>
               <div className="p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -87,12 +87,13 @@ export function FuturePanel({ future }) {
             </div>
           </div>
 
-          <div className={frameClassName()}>
-            <div className="p-3 md:p-4">
+          <div className={`${frameClassName()} min-w-0`}>
+            <div className="p-3 md:p-4 h-full min-h-[300px]">
               <AreaTrendChart
                 title="Patrimonio na Perpetuidade"
                 className="min-h-full rounded-[22px]"
                 data={chartRows}
+                hideFloatingTooltip={true}
                 valueFormatter={(value) =>
                   formatTableNumber(Math.abs(value))
                 }

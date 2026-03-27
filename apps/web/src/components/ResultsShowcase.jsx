@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AreaTrendChart } from './AreaTrendChart.jsx';
 import { SectionCard } from './SectionCard.jsx';
 import { formatDateOnly, formatPercent, formatPlainNumber, formatTableNumber } from '../lib/formatters.js';
@@ -8,13 +9,13 @@ function panelClassName(backgroundClass = 'bg-white/88') {
 
 function introPanel({ kicker, title, description }) {
   return (
-    <div className="rounded-[24px] border border-[#173d5d]/12 bg-[linear-gradient(135deg,#f7fbff_0%,#edf5fd_100%)] px-5 py-4 shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="rounded-[24px] border border-[#173d5d]/12 bg-[linear-gradient(135deg,#f7fbff_0%,#edf5fd_100%)] px-4 sm:px-5 py-3 sm:py-4 shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end sm:justify-between gap-2 sm:gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#355f9b]">{kicker}</p>
-          <p className="mt-1 text-xl font-semibold text-[#173d5d]">{title}</p>
+          <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.18em] text-[#355f9b]">{kicker}</p>
+          <p className="mt-0.5 sm:mt-1 text-lg sm:text-xl font-semibold text-[#173d5d]">{title}</p>
         </div>
-        {description ? <p className="text-sm text-slate/60">{description}</p> : null}
+        {description ? <p className="text-xs sm:text-sm text-slate/60">{description}</p> : null}
       </div>
     </div>
   );
@@ -45,7 +46,10 @@ function valueClassName(size = 'md', tone = 'dark') {
   return `mt-2 break-words font-display leading-tight ${toneClass} ${sizeClass}`;
 }
 
-export function ResultsShowcase({ input, results }) {
+export function ResultsShowcase({ input, results, onFieldChange, readOnly = false }) {
+  const [isEditingInflation, setIsEditingInflation] = useState(false);
+  const [tempInflation, setTempInflation] = useState(input?.future?.inflationRate ?? 6);
+
   if (!results) {
     return null;
   }
@@ -56,28 +60,35 @@ export function ResultsShowcase({ input, results }) {
     interestValue: row.interestValue
   }));
 
+  const handleInflationSubmit = () => {
+    setIsEditingInflation(false);
+    if (onFieldChange) {
+      onFieldChange('future.inflationRate', tempInflation, 'number');
+    }
+  };
+
   return (
     <SectionCard
       eyebrow="Aba 2"
       title="Planejamento inicial"
       description="Replica a aba de resultados da planilha com a fase de acumulo, os indicadores de retorno e a projecao patrimonial ate a idade objetivo."
     >
-      <div className="grid gap-5 rounded-[30px] border border-[#173d5d]/12 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-4 lg:p-5">
-        <div className="relative overflow-hidden rounded-[26px] border border-[#355f9b]/18 bg-[linear-gradient(135deg,#173d5d_0%,#2b5d8e_58%,#4d82b6_100%)] px-5 py-5 text-white shadow-[0_20px_40px_rgba(23,61,93,0.22)]">
+      <div className="grid gap-4 sm:gap-5 rounded-[24px] sm:rounded-[30px] border border-[#173d5d]/12 bg-[linear-gradient(180deg,#ffffff_0%,#f7fbff_100%)] p-3 sm:p-4 lg:p-5">
+        <div className="relative overflow-hidden rounded-[20px] sm:rounded-[26px] border border-[#355f9b]/18 bg-[linear-gradient(135deg,#173d5d_0%,#2b5d8e_58%,#4d82b6_100%)] px-4 sm:px-5 py-4 sm:py-5 text-white shadow-[0_20px_40px_rgba(23,61,93,0.22)]">
           <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-white/10 blur-2xl" aria-hidden="true" />
           <div className="absolute bottom-0 left-8 h-20 w-20 rounded-full bg-[#f0c36b]/18 blur-2xl" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.24em] text-white/72">Portfel</p>
-            <h3 className="mt-1.5 font-display text-3xl leading-none md:text-4xl">Planejamento inicial</h3>
+          <div className="min-w-0 relative z-10">
+            <p className="text-[10px] sm:text-xs uppercase tracking-[0.24em] text-white/72">Portfel</p>
+            <h3 className="mt-1 sm:mt-1.5 font-display text-[1.75rem] sm:text-3xl leading-none md:text-4xl text-balance">Planejamento inicial</h3>
           </div>
-          <div className="mt-4 grid gap-4 md:mt-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-            <div className="min-w-0 rounded-[18px] border border-white/14 bg-white/10 px-4 py-3 backdrop-blur-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/68">Cliente</p>
-              <p className="mt-1.5 break-words font-display text-2xl leading-tight text-white md:text-3xl">{input.client.name}</p>
+          <div className="mt-4 grid gap-3 sm:gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end relative z-10">
+            <div className="min-w-0 rounded-[16px] sm:rounded-[18px] border border-white/14 bg-white/10 px-3 sm:px-4 py-2.5 sm:py-3 backdrop-blur-sm">
+              <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.16em] text-white/68">Cliente</p>
+              <p className="mt-1 break-words font-display text-xl sm:text-2xl leading-tight text-white md:text-3xl">{input.client.name}</p>
             </div>
-            <div className="rounded-[18px] border border-white/14 bg-white/10 px-4 py-3 text-right backdrop-blur-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/78">Data atual</p>
-              <p className="mt-1.5 text-xl font-semibold md:text-2xl">{formatDateOnly(results.currentDate)}</p>
+            <div className="rounded-[16px] sm:rounded-[18px] border border-white/14 bg-white/10 px-3 sm:px-4 py-2.5 sm:py-3 sm:text-right backdrop-blur-sm">
+              <p className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.16em] text-white/78">Data atual</p>
+              <p className="mt-1 text-lg sm:text-xl font-semibold md:text-2xl">{formatDateOnly(results.currentDate)}</p>
             </div>
           </div>
         </div>
@@ -120,9 +131,33 @@ export function ResultsShowcase({ input, results }) {
                   <p className="text-xs leading-snug text-slate/60">Tempo de contribuicao</p>
                   <p className={valueClassName('sm')}>{formatPlainNumber(results.contributionYears)} anos</p>
                 </div>
-                <div className={metricCardClassName('warm')}>
+                <div
+                  className={`${metricCardClassName('warm')} ${!readOnly ? 'cursor-pointer transition hover:border-[#e0a06d]/40' : ''}`}
+                  onClick={() => {
+                    if (!readOnly && !isEditingInflation) {
+                      setTempInflation(input?.future?.inflationRate ?? 6);
+                      setIsEditingInflation(true);
+                    }
+                  }}
+                >
                   <p className="text-xs leading-snug text-slate/60">Inflacao media</p>
-                  <p className={valueClassName('sm')}>{formatPercent(results.inflationAnnualRate)}</p>
+                  {isEditingInflation ? (
+                    <input
+                      autoFocus
+                      type="number"
+                      step="0.1"
+                      value={tempInflation}
+                      onChange={(e) => setTempInflation(e.target.value)}
+                      onBlur={handleInflationSubmit}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleInflationSubmit();
+                        if (e.key === 'Escape') setIsEditingInflation(false);
+                      }}
+                      className="mt-2 w-full bg-transparent font-display text-lg leading-tight text-[#173d5d] focus:outline-none"
+                    />
+                  ) : (
+                    <p className={valueClassName('sm')}>{formatPercent(results.inflationAnnualRate)}</p>
+                  )}
                 </div>
               </div>
               </div>

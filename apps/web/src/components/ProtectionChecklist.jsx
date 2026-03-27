@@ -2,7 +2,7 @@ import { formatTableNumber } from '../lib/formatters.js';
 
 export function ProtectionChecklist({ checklist }) {
   return (
-    <div className="overflow-hidden rounded-[20px] border border-[#173d5d]/10 bg-white shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
+    <div className="overflow-x-auto overflow-y-hidden rounded-[20px] border border-[#173d5d]/10 bg-white shadow-[0_18px_34px_rgba(23,61,93,0.08)]">
       <table className="min-w-full border-collapse text-xs text-slate md:text-sm">
         <thead className="bg-[linear-gradient(135deg,#173d5d_0%,#355f9b_100%)] text-white">
           <tr>
