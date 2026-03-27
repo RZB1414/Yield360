@@ -23,9 +23,9 @@ function BooleanSelect({ value, onChange }) {
 
 function SummaryRow({ label, value }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-slate/10 gap-1 sm:gap-3 px-3 py-2.5">
-      <div className="text-sm font-medium leading-snug text-slate">{label}</div>
-      <div className="text-left sm:text-right text-sm font-semibold leading-snug text-slate break-all sm:break-normal">{value}</div>
+    <div className="grid grid-cols-[1.15fr_0.85fr] border-t border-slate/10">
+      <div className="px-3 py-2.5 text-sm font-medium leading-snug text-slate">{label}</div>
+      <div className="px-3 py-2.5 text-right text-sm font-semibold leading-snug text-slate">{value}</div>
     </div>
   );
 }

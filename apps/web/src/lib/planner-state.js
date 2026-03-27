@@ -4,10 +4,6 @@ import { parseLocalizedNumber } from './formatters.js';
 export function hydratePlannerInput(payload = {}) {
   const defaults = cloneDefaultPlannerInput();
 
-  if (defaults.future) {
-    defaults.future.inflationRate = 6;
-  }
-
   return {
     ...defaults,
     ...payload,
@@ -33,20 +29,12 @@ export function hydratePlannerInput(payload = {}) {
       ...defaults.vision360,
       ...(payload.vision360 ?? {}),
       assets: {
-        items: Array.isArray(payload.vision360?.assets?.items)
-          ? payload.vision360.assets.items.map((item) => ({
-              description: String(item?.description ?? ''),
-              value: item?.value ?? 0
-            }))
-          : defaults.vision360.assets.items
+        ...defaults.vision360.assets,
+        ...(payload.vision360?.assets ?? {})
       },
       liabilities: {
-        items: Array.isArray(payload.vision360?.liabilities?.items)
-          ? payload.vision360.liabilities.items.map((item) => ({
-              description: String(item?.description ?? ''),
-              value: item?.value ?? 0
-            }))
-          : defaults.vision360.liabilities.items
+        ...defaults.vision360.liabilities,
+        ...(payload.vision360?.liabilities ?? {})
       },
       budget: {
         ...defaults.vision360.budget,
@@ -67,18 +55,7 @@ export function hydratePlannerInput(payload = {}) {
     },
     protection: {
       ...defaults.protection,
-      ...(payload.protection ?? {}),
-      policies: Array.isArray(payload.protection?.policies)
-        ? payload.protection.policies.map(policy => ({
-            id: String(policy?.id ?? crypto.randomUUID()),
-            name: String(policy?.name ?? ''),
-            years: Number(policy?.years ?? 0),
-            company: String(policy?.company ?? ''),
-            value: Number(policy?.value ?? 0),
-            documentId: policy?.documentId ? String(policy.documentId) : null,
-            documentName: policy?.documentName ? String(policy.documentName) : null
-          }))
-        : defaults.protection.policies
+      ...(payload.protection ?? {})
     },
     succession: {
       ...defaults.succession,
@@ -124,8 +101,6 @@ export function updateNestedValue(currentState, path, rawValue, type = 'text') {
     cursor = cursor[segments[index]];
   }
 
-  cursor[segments.at(-1)] = type === 'number'
-    ? (typeof rawValue === 'number' ? rawValue : (rawValue === '' ? 0 : Number(parseLocalizedNumber(rawValue))))
-    : rawValue;
+  cursor[segments.at(-1)] = type === 'number' ? (rawValue === '' ? 0 : Number(parseLocalizedNumber(rawValue))) : rawValue;
   return nextState;
 }
