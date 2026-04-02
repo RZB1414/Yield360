@@ -180,7 +180,8 @@ export function normalizePlannerInput(payload = {}) {
         items: Array.isArray(payload.vision360?.assets?.items)
           ? payload.vision360.assets.items.map((item) => ({
               description: String(item?.description ?? '').trim(),
-              value: Math.max(0, toNumber(item?.value))
+              value: Math.max(0, toNumber(item?.value)),
+              comment: String(item?.comment ?? '').trim()
             }))
           : defaults.vision360.assets.items
       },
@@ -188,7 +189,8 @@ export function normalizePlannerInput(payload = {}) {
         items: Array.isArray(payload.vision360?.liabilities?.items)
           ? payload.vision360.liabilities.items.map((item) => ({
               description: String(item?.description ?? '').trim(),
-              value: Math.max(0, toNumber(item?.value))
+              value: Math.max(0, toNumber(item?.value)),
+              comment: String(item?.comment ?? '').trim()
             }))
           : defaults.vision360.liabilities.items
       },

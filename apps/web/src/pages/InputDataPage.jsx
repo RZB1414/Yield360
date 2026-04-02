@@ -400,12 +400,12 @@ export function InputDataPage() {
 		});
 	}
 
-	function handleAddAsset() {
+	function handleAddAsset(item = { description: '', value: 0 }) {
 		setInput((currentState) => {
 			const nextState = structuredClone(currentState);
 			nextState.vision360.assets.items = [
 				...(nextState.vision360.assets.items ?? []),
-				{ description: '', value: 0 }
+				{ description: item.description ?? '', value: Number(item.value ?? 0), comment: item.comment ?? '' }
 			];
 			return applyDerivedInputRules(nextState);
 		});
@@ -419,12 +419,12 @@ export function InputDataPage() {
 		});
 	}
 
-	function handleAddLiability() {
+	function handleAddLiability(item = { description: '', value: 0 }) {
 		setInput((currentState) => {
 			const nextState = structuredClone(currentState);
 			nextState.vision360.liabilities.items = [
 				...(nextState.vision360.liabilities.items ?? []),
-				{ description: '', value: 0 }
+				{ description: item.description ?? '', value: Number(item.value ?? 0), comment: item.comment ?? '' }
 			];
 			return applyDerivedInputRules(nextState);
 		});
