@@ -140,6 +140,7 @@ export const defaultPlannerInput = {
     parentsAlive: false,
     privateAssets: 0,
     commonAssets: 0,
+    commonAssetsItems: [],
     debts: 0,
     vgbl: 0,
     lifeInsurance: 0,

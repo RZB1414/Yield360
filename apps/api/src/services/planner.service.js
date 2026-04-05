@@ -156,8 +156,276 @@ function normalizeFamilyMembers(payload = [], defaults = []) {
   });
 }
 
+function normalizePatrimonialDescription(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+const legacyProtectionPolicies = [
+  {
+    coverage: 'Cobertura para invalidez total',
+    normalizedCoverage: 'cobertura para invalidez total',
+    flagField: 'totalDisability',
+    currentValueField: 'totalDisabilityCoverage'
+  },
+  {
+    coverage: 'Cobertura para doencas graves',
+    normalizedCoverage: 'cobertura para doencas graves',
+    flagField: 'criticalIllness',
+    currentValueField: 'criticalIllnessCoverage'
+  },
+  {
+    coverage: 'Cirurgias',
+    normalizedCoverage: 'cirurgias',
+    flagField: 'surgeries',
+    currentValueField: 'surgeriesCoverage'
+  },
+  {
+    coverage: 'Diaria por internacao',
+    normalizedCoverage: 'diaria por internacao',
+    flagField: 'hospitalDaily',
+    currentValueField: 'hospitalDailyCoverage'
+  },
+  {
+    coverage: 'DIT (Diaria por incapacidade temporaria)',
+    normalizedCoverage: 'dit (diaria por incapacidade temporaria)',
+    flagField: 'temporaryDisability',
+    currentValueField: 'temporaryDisabilityCoverage'
+  }
+];
+
+const additionalProtectionCoverages = new Set([
+  'cobertura adicional (educacao)',
+  'cobertura adicional (dependentes)'
+]);
+
+function normalizeProtectionCoverageLabel(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function isProtectionPolicyFilled(policy) {
+  return Boolean(
+    String(policy?.coverage ?? '').trim() ||
+      toNumber(policy?.idealValue) > 0 ||
+      toNumber(policy?.currentValue) > 0 ||
+      toNumber(policy?.coverageYears) > 0 ||
+      toNumber(policy?.monthlyPremium) > 0 ||
+      String(policy?.documentId ?? '').trim() ||
+      String(policy?.documentName ?? '').trim()
+  );
+}
+
+function buildLegacyProtectionPolicies(protection = {}) {
+  const basePolicies = legacyProtectionPolicies
+    .map((definition, index) => {
+      const currentValue = Math.max(0, toNumber(protection?.[definition.currentValueField] ?? 0));
+      const enabled = toBoolean(protection?.[definition.flagField]);
+
+      if (!enabled && currentValue === 0) {
+        return null;
+      }
+
+      return {
+        id: `legacy-protection-${index + 1}`,
+        coverage: definition.coverage,
+        idealValue: 0,
+        currentValue,
+        coverageYears: 0,
+        monthlyPremium: 0,
+        company: '',
+        documentId: null,
+        documentName: null
+      };
+    })
+    .filter(Boolean);
+
+  const additionalIdealValue = Math.max(0, toNumber(protection?.dependentEducationIdealCoverage ?? 0));
+  const additionalCoverageYears = Math.max(0, toNumber(protection?.dependentEducationYears ?? 0));
+  const additionalMonthlyPremium = Math.max(0, toNumber(protection?.dependentEducationMonthlyAid ?? 0));
+  const hasAdditionalCoverage =
+    toBoolean(protection?.dependentEducationInterest) ||
+    additionalIdealValue > 0 ||
+    additionalCoverageYears > 0 ||
+    additionalMonthlyPremium > 0;
+
+  if (!hasAdditionalCoverage) {
+    return basePolicies;
+  }
+
+  return [
+    ...basePolicies,
+    {
+      id: `legacy-protection-${basePolicies.length + 1}`,
+      coverage: 'Cobertura adicional (Educacao)',
+      idealValue: additionalIdealValue,
+      currentValue: 0,
+      coverageYears: additionalCoverageYears,
+      monthlyPremium: additionalMonthlyPremium,
+      company: '',
+      documentId: null,
+      documentName: null
+    }
+  ];
+}
+
+function normalizeProtectionPolicies(protection = {}) {
+  const policies = Array.isArray(protection?.policies) && protection.policies.length > 0
+    ? protection.policies
+    : buildLegacyProtectionPolicies(protection);
+
+  return policies
+    .map((policy, index) => ({
+      ...policy,
+      id: String(policy?.id ?? `protection-policy-${index + 1}`),
+      coverage: String(policy?.coverage ?? policy?.name ?? '').trim(),
+      idealValue: Math.max(0, toNumber(policy?.idealValue ?? 0)),
+      currentValue: Math.max(0, toNumber(policy?.currentValue ?? policy?.value ?? 0)),
+      coverageYears: Math.max(0, toNumber(policy?.coverageYears ?? policy?.years ?? 0)),
+      monthlyPremium: Math.max(0, toNumber(policy?.monthlyPremium ?? 0)),
+      company: String(policy?.company ?? '').trim(),
+      documentId: policy?.documentId ? String(policy.documentId) : null,
+      documentName: policy?.documentName ? String(policy.documentName).trim() : null,
+      contentBase64: policy?.contentBase64 ?? undefined
+    }))
+    .filter(isProtectionPolicyFilled);
+}
+
+function buildLegacyProtectionFieldsFromPolicies(policies = []) {
+  const derivedProtectionFields = {
+    totalDisability: false,
+    totalDisabilityCoverage: 0,
+    criticalIllness: false,
+    criticalIllnessCoverage: 0,
+    surgeries: false,
+    surgeriesCoverage: 0,
+    hospitalDaily: false,
+    hospitalDailyCoverage: 0,
+    temporaryDisability: false,
+    temporaryDisabilityCoverage: 0,
+    dependentEducationInterest: false,
+    dependentEducationYears: 0,
+    dependentEducationMonthlyAid: 0,
+    dependentEducationIdealCoverage: 0
+  };
+
+  policies.forEach((policy) => {
+    const normalizedCoverage = normalizeProtectionCoverageLabel(policy.coverage);
+    const currentValue = Math.max(0, toNumber(policy.currentValue));
+    const idealValue = Math.max(0, toNumber(policy.idealValue));
+    const coverageYears = Math.max(0, toNumber(policy.coverageYears));
+    const monthlyPremium = Math.max(0, toNumber(policy.monthlyPremium));
+    const matchedDefinition = legacyProtectionPolicies.find(
+      (definition) => definition.normalizedCoverage === normalizedCoverage
+    );
+
+    if (matchedDefinition) {
+      derivedProtectionFields[matchedDefinition.flagField] = true;
+      derivedProtectionFields[matchedDefinition.currentValueField] += currentValue;
+      return;
+    }
+
+    if (additionalProtectionCoverages.has(normalizedCoverage)) {
+      derivedProtectionFields.dependentEducationInterest = true;
+      derivedProtectionFields.dependentEducationYears = Math.max(
+        derivedProtectionFields.dependentEducationYears,
+        coverageYears
+      );
+      derivedProtectionFields.dependentEducationMonthlyAid += monthlyPremium;
+      derivedProtectionFields.dependentEducationIdealCoverage += idealValue;
+    }
+  });
+
+  return derivedProtectionFields;
+}
+
+function resolvePatrimonialGroup(description, fallbackGroup) {
+  const normalizedDescription = normalizePatrimonialDescription(description);
+
+  if (
+    normalizedDescription === 'ativos financeiros' ||
+    normalizedDescription === 'ativos imobilizados' ||
+    normalizedDescription === 'consorcios'
+  ) {
+    return 'asset';
+  }
+
+  if (normalizedDescription === 'emprestimos') {
+    return 'liability';
+  }
+
+  return fallbackGroup;
+}
+
+function normalizePatrimonialItems(assets = [], liabilities = []) {
+  const normalizedAssets = [];
+  const normalizedLiabilities = [];
+
+  [
+    ...(Array.isArray(assets) ? assets.map((item) => ({ item, fallbackGroup: 'asset' })) : []),
+    ...(Array.isArray(liabilities) ? liabilities.map((item) => ({ item, fallbackGroup: 'liability' })) : [])
+  ].forEach(({ item, fallbackGroup }) => {
+    const normalizedItem = {
+      description: String(item?.description ?? '').trim(),
+      value: Math.max(0, toNumber(item?.value)),
+      comment: String(item?.comment ?? '').trim()
+    };
+
+    if (!normalizedItem.description && normalizedItem.value === 0 && !normalizedItem.comment) {
+      return;
+    }
+
+    if (resolvePatrimonialGroup(normalizedItem.description, fallbackGroup) === 'asset') {
+      normalizedAssets.push(normalizedItem);
+      return;
+    }
+
+    normalizedLiabilities.push(normalizedItem);
+  });
+
+  return {
+    assets: normalizedAssets,
+    liabilities: normalizedLiabilities
+  };
+}
+
+function normalizeSuccessionCommonAssetsItems(items = [], fallbackTotal = 0) {
+  const sourceItems = Array.isArray(items) && items.length > 0
+    ? items
+    : toNumber(fallbackTotal) > 0
+      ? [{ name: 'Bem comum do casal', value: fallbackTotal, notes: '' }]
+      : [];
+
+  return sourceItems
+    .map((item, index) => ({
+      id: String(item?.id ?? `succession-common-asset-${index + 1}`),
+      name: String(item?.name ?? item?.label ?? '').trim(),
+      value: Math.max(0, toNumber(item?.value)),
+      notes: String(item?.notes ?? item?.comment ?? '').trim()
+    }))
+    .filter((item) => item.name || item.value > 0 || item.notes);
+}
+
+function sumSuccessionCommonAssetsItems(items = []) {
+  return items.reduce((total, item) => total + toNumber(item?.value), 0);
+}
+
 export function normalizePlannerInput(payload = {}) {
   const defaults = cloneDefaultPlannerInput();
+  const normalizedPatrimonialItems = normalizePatrimonialItems(
+    payload.vision360?.assets?.items,
+    payload.vision360?.liabilities?.items
+  );
+  const normalizedSuccessionCommonAssetsItems = normalizeSuccessionCommonAssetsItems(
+    payload.succession?.commonAssetsItems,
+    payload.succession?.commonAssets
+  );
   const input = {
     ...defaults,
     ...payload,
@@ -177,22 +445,10 @@ export function normalizePlannerInput(payload = {}) {
       ...defaults.vision360,
       ...(payload.vision360 ?? {}),
       assets: {
-        items: Array.isArray(payload.vision360?.assets?.items)
-          ? payload.vision360.assets.items.map((item) => ({
-              description: String(item?.description ?? '').trim(),
-              value: Math.max(0, toNumber(item?.value)),
-              comment: String(item?.comment ?? '').trim()
-            }))
-          : defaults.vision360.assets.items
+        items: normalizedPatrimonialItems.assets
       },
       liabilities: {
-        items: Array.isArray(payload.vision360?.liabilities?.items)
-          ? payload.vision360.liabilities.items.map((item) => ({
-              description: String(item?.description ?? '').trim(),
-              value: Math.max(0, toNumber(item?.value)),
-              comment: String(item?.comment ?? '').trim()
-            }))
-          : defaults.vision360.liabilities.items
+        items: normalizedPatrimonialItems.liabilities
       },
       budget: {
         ...defaults.vision360.budget,
@@ -217,7 +473,9 @@ export function normalizePlannerInput(payload = {}) {
     },
     succession: {
       ...defaults.succession,
-      ...(payload.succession ?? {})
+      ...(payload.succession ?? {}),
+      commonAssetsItems: normalizedSuccessionCommonAssetsItems,
+      commonAssets: sumSuccessionCommonAssetsItems(normalizedSuccessionCommonAssetsItems)
     },
     control: {
       ...defaults.control,
@@ -301,6 +559,11 @@ export function normalizePlannerInput(payload = {}) {
     : defaults.succession.maritalRegime;
   input.succession.conflictsComment = String(input.succession.conflictsComment ?? '').trim();
   input.succession.observations = String(input.succession.observations ?? '').trim();
+  input.succession.commonAssetsItems = normalizeSuccessionCommonAssetsItems(
+    input.succession.commonAssetsItems,
+    input.succession.commonAssets
+  );
+  input.succession.commonAssets = sumSuccessionCommonAssetsItems(input.succession.commonAssetsItems);
 
   input.vision360.budget.workRegime = String(input.vision360.budget.workRegime ?? '').trim();
   input.vision360.budget.taxDeclaration = String(input.vision360.budget.taxDeclaration ?? '').trim();
@@ -321,6 +584,9 @@ export function normalizePlannerInput(payload = {}) {
   input.profileValidation.term = String(input.profileValidation.term ?? '').trim();
   input.profileValidation.validated = toBoolean(input.profileValidation.validated);
   input.profileValidation.notes = String(input.profileValidation.notes ?? '').trim();
+
+  input.protection.policies = normalizeProtectionPolicies(payload.protection ?? {});
+  Object.assign(input.protection, buildLegacyProtectionFieldsFromPolicies(input.protection.policies));
 
   ['totalDisability', 'criticalIllness', 'surgeries', 'hospitalDaily', 'temporaryDisability', 'dependentEducationInterest'].forEach(
     (field) => {

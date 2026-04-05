@@ -3,13 +3,36 @@ import { familyRelationshipOptions, investorProfiles, maritalRegimes, maritalSta
 import { FormField } from './FormField.jsx';
 import { LocalizedNumberInput } from './LocalizedNumberInput.jsx';
 import { SectionCard } from './SectionCard.jsx';
+import { getPlanDocument } from '../lib/api.js';
 import { formatPlainNumber, formatTableNumber } from '../lib/formatters.js';
 
 const patrimonialPresetOptions = [
   { key: 'financial', label: 'Ativos financeiros', kind: 'asset', description: 'Ativos financeiros' },
   { key: 'immobilized', label: 'Ativos imobilizados', kind: 'asset', description: 'Ativos imobilizados' },
   { key: 'loans', label: 'Emprestimos', kind: 'liability', description: 'Emprestimos' },
-  { key: 'consortiums', label: 'Consórcios', kind: 'liability', description: 'Consórcios' }
+  { key: 'consortiums', label: 'Consórcios', kind: 'asset', description: 'Consórcios' }
+];
+
+const taxDeclarationOptions = ['Completa', 'Simplificada'];
+
+const lifePhaseOptions = ['Acúmulo de Patrimônio', 'Preservação de Patrimônio', 'Usufruto'];
+
+const financialCapacityOptions = [
+  'Costuma resgatar',
+  'Não resgata',
+  'Não aporta',
+  'Aporta sem recorrência',
+  'Aporta com recorrência'
+];
+
+const protectionPresetOptions = [
+  'Cobertura para invalidez total',
+  'Cobertura para doenças graves',
+  'Cirurgias',
+  'Diária por internação',
+  'DIT (Diária por incapacidade temporária)',
+  'Cobertura adicional (Educação)',
+  'Cobertura adicional (Dependentes)'
 ];
 
 function inputClassName(readOnly = false, hasError = false) {
@@ -40,6 +63,26 @@ function toNumber(value) {
 }
 
 function sumPatrimonialItems(items = []) {
+  return items.reduce((total, item) => total + toNumber(item?.value), 0);
+}
+
+function isProtectionPolicyFilled(policy) {
+  return Boolean(
+    String(policy?.coverage ?? policy?.name ?? '').trim() ||
+      toNumber(policy?.idealValue) > 0 ||
+      toNumber(policy?.currentValue ?? policy?.value) > 0 ||
+      toNumber(policy?.coverageYears ?? policy?.years) > 0 ||
+      toNumber(policy?.monthlyPremium) > 0 ||
+      String(policy?.documentId ?? '').trim() ||
+      String(policy?.documentName ?? '').trim()
+  );
+}
+
+function isSuccessionCommonAssetFilled(item) {
+  return Boolean(String(item?.name ?? '').trim() || toNumber(item?.value) > 0 || String(item?.notes ?? '').trim());
+}
+
+function sumSuccessionCommonAssetsItems(items = []) {
   return items.reduce((total, item) => total + toNumber(item?.value), 0);
 }
 
@@ -157,6 +200,19 @@ function TextInput({ value, onChange, readOnly = false, type = 'text', step, fie
   );
 }
 
+function TextAreaInput({ value, onChange, readOnly = false, fieldPath, hasError = false, className = '' }) {
+  return (
+    <textarea
+      className={`${inputClassName(readOnly, hasError)} min-h-[220px] resize-y ${className}`.trim()}
+      value={value ?? ''}
+      onChange={readOnly ? undefined : onChange}
+      readOnly={readOnly}
+      data-field-path={fieldPath}
+      aria-invalid={hasError}
+    />
+  );
+}
+
 function SelectInput({ value, onChange, options, readOnly = false, emptyLabel = 'Selecione', fieldPath, hasError = false }) {
   return (
     <select
@@ -216,11 +272,21 @@ export function Vision360Form({
   onRemoveAsset = () => {},
   onAddLiability = () => {},
   onRemoveLiability = () => {},
+  onAddSuccessionCommonAsset = () => {},
+  onRemoveSuccessionCommonAsset = () => {},
+  onAddPolicy = () => {},
+  onRemovePolicy = () => {},
+  onPolicyFieldChange = () => {},
+  onPolicyFileChange = () => {},
   fieldErrors = {},
   readOnly = false
 }) {
   const [isBalanceMenuOpen, setIsBalanceMenuOpen] = useState(false);
   const [expandedPatrimonialComments, setExpandedPatrimonialComments] = useState({});
+  const [expandedSuccessionCommonAssetNotes, setExpandedSuccessionCommonAssetNotes] = useState({});
+  const [isSuccessionConflictExpanded, setIsSuccessionConflictExpanded] = useState(false);
+  const [selectedProtectionPreset, setSelectedProtectionPreset] = useState('');
+  const [openingProtectionDocumentId, setOpeningProtectionDocumentId] = useState('');
   const balanceMenuRef = useRef(null);
   const familyInputs = input.family?.members ?? [];
   const familyMembers = overview?.familyMembers ?? [];
@@ -242,15 +308,27 @@ export function Vision360Form({
         .map((member, index) => ({ member, index }))
         .filter(({ member }) => isFamilyMemberFilled(member))
     : familyInputs.map((member, index) => ({ member, index }));
-
-  const protectionRows = [
-    ['Cobertura para invalidez total', 'protection.totalDisability', 'protection.totalDisabilityCoverage'],
-    ['Cobertura para doencas graves', 'protection.criticalIllness', 'protection.criticalIllnessCoverage'],
-    ['Cirurgias', 'protection.surgeries', 'protection.surgeriesCoverage'],
-    ['Diaria por internacao', 'protection.hospitalDaily', 'protection.hospitalDailyCoverage'],
-    ['DIT (diaria por incapacidade temporaria)', 'protection.temporaryDisability', 'protection.temporaryDisabilityCoverage']
-  ];
+  const successionCommonAssetsItems = input.succession?.commonAssetsItems ?? [];
+  const visibleSuccessionCommonAssets = readOnly
+    ? successionCommonAssetsItems
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => isSuccessionCommonAssetFilled(item))
+    : successionCommonAssetsItems.map((item, index) => ({ item, index }));
+  const successionCommonAssetsTotal = sumSuccessionCommonAssetsItems(successionCommonAssetsItems);
+  const protectionPolicies = input.protection?.policies ?? [];
+  const visibleProtectionPolicies = readOnly
+    ? protectionPolicies
+        .map((policy, index) => ({ policy, index }))
+        .filter(({ policy }) => isProtectionPolicyFilled(policy))
+    : protectionPolicies.map((policy, index) => ({ policy, index }));
+  const financialCapacitySelectOptions = buildSelectOptions(
+    financialCapacityOptions,
+    input.profileValidation.financialCapacity
+  );
+  const lifePhaseSelectOptions = buildSelectOptions(lifePhaseOptions, input.planning.lifePhase);
   const maritalStatusOptions = buildSelectOptions(maritalStatuses, input.succession.maritalStatus);
+  const successionConflictComment = String(input.succession.conflictsComment ?? '');
+  const hasSuccessionConflictComment = successionConflictComment.trim().length > 0;
 
   function handleAddPatrimonialOption(option) {
     if (option.kind === 'asset') {
@@ -299,6 +377,63 @@ export function Vision360Form({
       ...currentState,
       [rowId]: !currentState[rowId]
     }));
+  }
+
+  function toggleSuccessionCommonAssetNotes(rowId) {
+    setExpandedSuccessionCommonAssetNotes((currentState) => ({
+      ...currentState,
+      [rowId]: !currentState[rowId]
+    }));
+  }
+
+  function handleAddProtectionPolicy(coverage = '') {
+    if (!coverage && coverage !== '') {
+      return;
+    }
+
+    onAddPolicy({
+      coverage,
+      idealValue: 0,
+      currentValue: 0,
+      coverageYears: 0,
+      monthlyPremium: 0,
+      documentId: null,
+      documentName: null
+    });
+    setSelectedProtectionPreset('');
+  }
+
+  async function handleOpenProtectionPdf(policy) {
+    if (!policy?.documentId) {
+      return;
+    }
+
+    setOpeningProtectionDocumentId(policy.documentId);
+
+    try {
+      const data = await getPlanDocument(policy.documentId);
+      const base64Content = String(data?.contentBase64 ?? '');
+      const contentType = data?.contentType || 'application/pdf';
+      const pureBase64 = base64Content.includes('base64,') ? base64Content.split('base64,')[1] : base64Content;
+      const byteCharacters = atob(pureBase64);
+      const byteNumbers = new Array(byteCharacters.length);
+
+      for (let index = 0; index < byteCharacters.length; index += 1) {
+        byteNumbers[index] = byteCharacters.charCodeAt(index);
+      }
+
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: contentType });
+      const url = URL.createObjectURL(blob);
+
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      console.error('Falha ao abrir o PDF da cobertura:', error);
+      window.alert('Nao foi possivel abrir o PDF desta cobertura.');
+    } finally {
+      setOpeningProtectionDocumentId('');
+    }
   }
 
   useEffect(() => {
@@ -666,51 +801,61 @@ export function Vision360Form({
 
           <div className={blockClassName()}>
             <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-clay">4. Dados orcamentarios</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <FormField label="Regime de trabalho">
-                <TextInput value={input.vision360.budget.workRegime} onChange={(event) => onFieldChange('vision360.budget.workRegime', event.target.value)} readOnly={readOnly} fieldPath="vision360.budget.workRegime" />
-              </FormField>
-              <FormField label="Tipo de declaracao de IR">
-                <TextInput value={input.vision360.budget.taxDeclaration} onChange={(event) => onFieldChange('vision360.budget.taxDeclaration', event.target.value)} readOnly={readOnly} fieldPath="vision360.budget.taxDeclaration" />
-              </FormField>
-              <FormField label="Ganho mensal aproximado">
-                <LocalizedNumberInput value={input.vision360.budget.monthlyIncome} step="0.01" onChange={(event) => onFieldChange('vision360.budget.monthlyIncome', event.target.value, 'number')} readOnly={readOnly} fieldPath="vision360.budget.monthlyIncome" clearOnFocus className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Ganho anual aproximado">
-                <TextInput value={formatTableNumber(annualIncome)} readOnly />
-              </FormField>
-              <FormField label="Despesa mensal aproximada">
-                <LocalizedNumberInput value={input.vision360.budget.monthlyExpenses} step="0.01" onChange={(event) => onFieldChange('vision360.budget.monthlyExpenses', event.target.value, 'number')} readOnly={readOnly} fieldPath="vision360.budget.monthlyExpenses" clearOnFocus className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Despesa anual aproximada">
-                <TextInput value={formatTableNumber(annualExpenses)} readOnly />
-              </FormField>
-              <FormField label="Reserva de emergencia - Ja possui?">
-                <BooleanSelect value={input.vision360.budget.emergencyReserveHas} onChange={(value) => onFieldChange('vision360.budget.emergencyReserveHas', value)} readOnly={readOnly} fieldPath="vision360.budget.emergencyReserveHas" />
-              </FormField>
-              <FormField label="PGBL?">
-                <BooleanSelect value={input.vision360.budget.hasPGBL} onChange={(value) => onFieldChange('vision360.budget.hasPGBL', value)} readOnly={readOnly} fieldPath="vision360.budget.hasPGBL" />
-              </FormField>
-              <FormField label="Reserva de emergencia - Necessidade">
-                <LocalizedNumberInput value={input.vision360.budget.emergencyReserveNeed} step="0.01" onChange={(event) => onFieldChange('vision360.budget.emergencyReserveNeed', event.target.value, 'number')} readOnly={readOnly} fieldPath="vision360.budget.emergencyReserveNeed" clearOnFocus className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Reserva adicional - Objetivo de curto prazo">
-                <LocalizedNumberInput value={input.vision360.budget.shortTermReserveTarget} step="0.01" onChange={(event) => onFieldChange('vision360.budget.shortTermReserveTarget', event.target.value, 'number')} readOnly={readOnly} fieldPath="vision360.budget.shortTermReserveTarget" clearOnFocus className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Reserva de emergencia - Valor atual">
-                <LocalizedNumberInput
-                  value={input.vision360.budget.emergencyReserveCurrent}
-                  step="0.01"
-                  onChange={(event) => onFieldChange('vision360.budget.emergencyReserveCurrent', event.target.value, 'number')}
+            <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
+              <div className="grid gap-3 md:grid-cols-2">
+                <FormField label="Regime de trabalho">
+                  <TextInput value={input.vision360.budget.workRegime} onChange={(event) => onFieldChange('vision360.budget.workRegime', event.target.value)} readOnly={readOnly} fieldPath="vision360.budget.workRegime" />
+                </FormField>
+                <FormField label="Tipo de declaracao de IR">
+                  <SelectInput
+                    value={input.vision360.budget.taxDeclaration}
+                    onChange={(event) => onFieldChange('vision360.budget.taxDeclaration', event.target.value)}
+                    options={taxDeclarationOptions}
+                    readOnly={readOnly}
+                    fieldPath="vision360.budget.taxDeclaration"
+                  />
+                </FormField>
+                <FormField label="Ganho mensal aproximado">
+                  <LocalizedNumberInput value={input.vision360.budget.monthlyIncome} step="0.01" onChange={(event) => onFieldChange('vision360.budget.monthlyIncome', event.target.value, 'number')} readOnly={readOnly} fieldPath="vision360.budget.monthlyIncome" clearOnFocus className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Ganho anual aproximado">
+                  <TextInput value={formatTableNumber(annualIncome)} readOnly />
+                </FormField>
+                <FormField label="Despesa mensal aproximada">
+                  <LocalizedNumberInput value={input.vision360.budget.monthlyExpenses} step="0.01" onChange={(event) => onFieldChange('vision360.budget.monthlyExpenses', event.target.value, 'number')} readOnly={readOnly} fieldPath="vision360.budget.monthlyExpenses" clearOnFocus className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Despesa anual aproximada">
+                  <TextInput value={formatTableNumber(annualExpenses)} readOnly />
+                </FormField>
+                <FormField label="Reserva de emergencia - Ja possui?">
+                  <BooleanSelect value={input.vision360.budget.emergencyReserveHas} onChange={(value) => onFieldChange('vision360.budget.emergencyReserveHas', value)} readOnly={readOnly} fieldPath="vision360.budget.emergencyReserveHas" />
+                </FormField>
+                <FormField label="Reserva de emergencia - Necessidade">
+                  <LocalizedNumberInput value={input.vision360.budget.emergencyReserveNeed} step="0.01" onChange={(event) => onFieldChange('vision360.budget.emergencyReserveNeed', event.target.value, 'number')} readOnly={readOnly} fieldPath="vision360.budget.emergencyReserveNeed" clearOnFocus className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Reserva adicional - Objetivo de curto prazo">
+                  <LocalizedNumberInput value={input.vision360.budget.shortTermReserveTarget} step="0.01" onChange={(event) => onFieldChange('vision360.budget.shortTermReserveTarget', event.target.value, 'number')} readOnly={readOnly} fieldPath="vision360.budget.shortTermReserveTarget" clearOnFocus className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Reserva de emergencia - Valor atual">
+                  <LocalizedNumberInput
+                    value={input.vision360.budget.emergencyReserveCurrent}
+                    step="0.01"
+                    onChange={(event) => onFieldChange('vision360.budget.emergencyReserveCurrent', event.target.value, 'number')}
+                    readOnly={readOnly}
+                    disabled={!input.vision360.budget.emergencyReserveHas}
+                    fieldPath="vision360.budget.emergencyReserveCurrent"
+                    clearOnFocus
+                    className={inputClassName(readOnly || !input.vision360.budget.emergencyReserveHas)}
+                  />
+                </FormField>
+              </div>
+              <FormField label="Observacoes">
+                <TextAreaInput
+                  value={input.vision360.budget.notes}
+                  onChange={(event) => onFieldChange('vision360.budget.notes', event.target.value)}
                   readOnly={readOnly}
-                  disabled={!input.vision360.budget.emergencyReserveHas}
-                  fieldPath="vision360.budget.emergencyReserveCurrent"
-                  clearOnFocus
-                  className={inputClassName(readOnly || !input.vision360.budget.emergencyReserveHas)}
+                  fieldPath="vision360.budget.notes"
                 />
-              </FormField>
-              <FormField label="Observacoes / comentarios">
-                <TextInput value={input.vision360.budget.notes} onChange={(event) => onFieldChange('vision360.budget.notes', event.target.value)} readOnly={readOnly} fieldPath="vision360.budget.notes" />
               </FormField>
             </div>
           </div>
@@ -719,102 +864,128 @@ export function Vision360Form({
         <div className="grid gap-4">
           <div className={blockClassName()}>
             <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-clay">5. Objetivos e plano de investimentos</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <FormField label="Idade na data da contratacao da consultoria" error={fieldErrors['planning.consultantStartAge']}>
-                <LocalizedNumberInput value={input.planning.consultantStartAge} onChange={(event) => onFieldChange('planning.consultantStartAge', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.consultantStartAge" hasError={Boolean(fieldErrors['planning.consultantStartAge'])} min="0" fractionDigits={0} className={inputClassName(readOnly, Boolean(fieldErrors['planning.consultantStartAge']))} />
-              </FormField>
-              <FormField label="Valor inicial sob consultoria">
-                <LocalizedNumberInput value={input.planning.initialConsultingValue} step="0.01" onChange={(event) => onFieldChange('planning.initialConsultingValue', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.initialConsultingValue" clearOnFocus className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Qual a sua fase de vida?">
-                <TextInput value={input.planning.lifePhase} onChange={(event) => onFieldChange('planning.lifePhase', event.target.value)} readOnly={readOnly} fieldPath="planning.lifePhase" />
-              </FormField>
-              <FormField label="Quantos anos pretende ficar nesta fase?">
-                <LocalizedNumberInput value={input.planning.phaseDurationYears} onChange={(event) => onFieldChange('planning.phaseDurationYears', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.phaseDurationYears" min="0" fractionDigits={0} className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Idade objetivo da aposentadoria" error={fieldErrors['future.targetAge']}>
-                <LocalizedNumberInput value={input.future.targetAge} onChange={(event) => onFieldChange('future.targetAge', event.target.value, 'number')} readOnly={readOnly} fieldPath="future.targetAge" hasError={Boolean(fieldErrors['future.targetAge'])} min="0" fractionDigits={0} className={inputClassName(readOnly, Boolean(fieldErrors['future.targetAge']))} />
-              </FormField>
-              <FormField label="Qual e o aporte mensal acordado?">
-                <LocalizedNumberInput value={input.future.agreedMonthlyContribution} step="0.01" onChange={(event) => onFieldChange('future.agreedMonthlyContribution', event.target.value, 'number')} readOnly={readOnly} fieldPath="future.agreedMonthlyContribution" clearOnFocus className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Qual o dia do aporte acordado?">
-                <LocalizedNumberInput value={input.planning.contributionDay} onChange={(event) => onFieldChange('planning.contributionDay', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.contributionDay" min="0" fractionDigits={0} className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Aportes adicionais">
-                <LocalizedNumberInput value={input.planning.extraContributions} step="0.01" onChange={(event) => onFieldChange('planning.extraContributions', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.extraContributions" clearOnFocus className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Aporte anual">
-                <TextInput value={formatTableNumber(annualContribution)} readOnly fieldPath="planning.annualContributionGoal" />
-              </FormField>
-              <FormField label="Quer renda dos investimentos na aposentadoria?">
-                <BooleanSelect value={input.planning.wantsRetirementIncome} onChange={(value) => onFieldChange('planning.wantsRetirementIncome', value)} readOnly={readOnly} fieldPath="planning.wantsRetirementIncome" />
-              </FormField>
-              <FormField label="Se sim, qual a renda mensal desejada?">
-                <LocalizedNumberInput
-                  value={input.future.desiredMonthlyRetirementSpend}
-                  step="0.01"
-                  onChange={(event) => onFieldChange('future.desiredMonthlyRetirementSpend', event.target.value, 'number')}
+            <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
+              <div className="grid gap-3 md:grid-cols-2">
+                <FormField label="Idade na data da contratacao da consultoria" error={fieldErrors['planning.consultantStartAge']}>
+                  <LocalizedNumberInput value={input.planning.consultantStartAge} onChange={(event) => onFieldChange('planning.consultantStartAge', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.consultantStartAge" hasError={Boolean(fieldErrors['planning.consultantStartAge'])} min="0" fractionDigits={0} className={inputClassName(readOnly, Boolean(fieldErrors['planning.consultantStartAge']))} />
+                </FormField>
+                <FormField label="Valor inicial sob consultoria">
+                  <LocalizedNumberInput value={input.planning.initialConsultingValue} step="0.01" onChange={(event) => onFieldChange('planning.initialConsultingValue', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.initialConsultingValue" clearOnFocus className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Qual a sua fase de vida?">
+                  <SelectInput
+                    value={input.planning.lifePhase}
+                    onChange={(event) => onFieldChange('planning.lifePhase', event.target.value)}
+                    options={lifePhaseSelectOptions}
+                    readOnly={readOnly}
+                    fieldPath="planning.lifePhase"
+                  />
+                </FormField>
+                <FormField label="Quantos anos pretende ficar nesta fase?">
+                  <LocalizedNumberInput value={input.planning.phaseDurationYears} onChange={(event) => onFieldChange('planning.phaseDurationYears', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.phaseDurationYears" min="0" fractionDigits={0} className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Idade objetivo da aposentadoria" error={fieldErrors['future.targetAge']}>
+                  <LocalizedNumberInput value={input.future.targetAge} onChange={(event) => onFieldChange('future.targetAge', event.target.value, 'number')} readOnly={readOnly} fieldPath="future.targetAge" hasError={Boolean(fieldErrors['future.targetAge'])} min="0" fractionDigits={0} className={inputClassName(readOnly, Boolean(fieldErrors['future.targetAge']))} />
+                </FormField>
+                <FormField label="Qual e o aporte mensal acordado?">
+                  <LocalizedNumberInput value={input.future.agreedMonthlyContribution} step="0.01" onChange={(event) => onFieldChange('future.agreedMonthlyContribution', event.target.value, 'number')} readOnly={readOnly} fieldPath="future.agreedMonthlyContribution" clearOnFocus className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Qual o dia do aporte acordado?">
+                  <LocalizedNumberInput value={input.planning.contributionDay} onChange={(event) => onFieldChange('planning.contributionDay', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.contributionDay" min="0" fractionDigits={0} className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Aportes adicionais">
+                  <LocalizedNumberInput value={input.planning.extraContributions} step="0.01" onChange={(event) => onFieldChange('planning.extraContributions', event.target.value, 'number')} readOnly={readOnly} fieldPath="planning.extraContributions" clearOnFocus className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Aporte anual">
+                  <TextInput value={formatTableNumber(annualContribution)} readOnly fieldPath="planning.annualContributionGoal" />
+                </FormField>
+                <FormField label="Quer renda dos investimentos na aposentadoria?">
+                  <BooleanSelect value={input.planning.wantsRetirementIncome} onChange={(value) => onFieldChange('planning.wantsRetirementIncome', value)} readOnly={readOnly} fieldPath="planning.wantsRetirementIncome" />
+                </FormField>
+                <FormField label="Se sim, qual a renda mensal desejada?">
+                  <LocalizedNumberInput
+                    value={input.future.desiredMonthlyRetirementSpend}
+                    step="0.01"
+                    onChange={(event) => onFieldChange('future.desiredMonthlyRetirementSpend', event.target.value, 'number')}
+                    readOnly={readOnly}
+                    disabled={!input.planning.wantsRetirementIncome}
+                    fieldPath="future.desiredMonthlyRetirementSpend"
+                    clearOnFocus
+                    className={inputClassName(readOnly || !input.planning.wantsRetirementIncome)}
+                  />
+                </FormField>
+                <FormField label="Tem renda extra prevista?">
+                  <BooleanSelect value={input.planning.extraIncomeExpected} onChange={(value) => onFieldChange('planning.extraIncomeExpected', value)} readOnly={readOnly} fieldPath="planning.extraIncomeExpected" />
+                </FormField>
+                <FormField label="Se sim, qual a renda mensal prevista?">
+                  <LocalizedNumberInput
+                    value={input.planning.extraMonthlyIncome}
+                    step="0.01"
+                    onChange={(event) => onFieldChange('planning.extraMonthlyIncome', event.target.value, 'number')}
+                    readOnly={readOnly}
+                    disabled={!input.planning.extraIncomeExpected}
+                    fieldPath="planning.extraMonthlyIncome"
+                    clearOnFocus
+                    className={inputClassName(readOnly || !input.planning.extraIncomeExpected)}
+                  />
+                </FormField>
+              </div>
+              <FormField label="Observacoes">
+                <TextAreaInput
+                  value={input.planning.otherObjectivesComment}
+                  onChange={(event) => onFieldChange('planning.otherObjectivesComment', event.target.value)}
                   readOnly={readOnly}
-                  disabled={!input.planning.wantsRetirementIncome}
-                  fieldPath="future.desiredMonthlyRetirementSpend"
-                  clearOnFocus
-                  className={inputClassName(readOnly || !input.planning.wantsRetirementIncome)}
+                  fieldPath="planning.otherObjectivesComment"
                 />
-              </FormField>
-              <FormField label="Tem renda extra prevista?">
-                <BooleanSelect value={input.planning.extraIncomeExpected} onChange={(value) => onFieldChange('planning.extraIncomeExpected', value)} readOnly={readOnly} fieldPath="planning.extraIncomeExpected" />
-              </FormField>
-              <FormField label="Se sim, qual a renda mensal prevista?">
-                <LocalizedNumberInput
-                  value={input.planning.extraMonthlyIncome}
-                  step="0.01"
-                  onChange={(event) => onFieldChange('planning.extraMonthlyIncome', event.target.value, 'number')}
-                  readOnly={readOnly}
-                  disabled={!input.planning.extraIncomeExpected}
-                  fieldPath="planning.extraMonthlyIncome"
-                  clearOnFocus
-                  className={inputClassName(readOnly || !input.planning.extraIncomeExpected)}
-                />
-              </FormField>
-              <FormField label="Existem outros objetivos?">
-                <TextInput value={input.planning.otherObjectivesComment} onChange={(event) => onFieldChange('planning.otherObjectivesComment', event.target.value)} readOnly={readOnly} fieldPath="planning.otherObjectivesComment" />
               </FormField>
             </div>
           </div>
 
           <div className={blockClassName()}>
             <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-clay">6. Validacao do perfil do investidor</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <FormField label="Perfil sugerido">
-                <SelectInput
-                  value={input.profileValidation.suggestedProfile}
-                  onChange={(event) => onFieldChange('profileValidation.suggestedProfile', event.target.value)}
-                  options={investorProfiles}
+            <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
+              <div className="grid gap-3 md:grid-cols-2">
+                <FormField label="Perfil sugerido">
+                  <SelectInput
+                    value={input.profileValidation.suggestedProfile}
+                    onChange={(event) => onFieldChange('profileValidation.suggestedProfile', event.target.value)}
+                    options={investorProfiles}
+                    readOnly={readOnly}
+                    fieldPath="profileValidation.suggestedProfile"
+                  />
+                </FormField>
+                <FormField label="Capacidade financeira">
+                  <SelectInput
+                    value={input.profileValidation.financialCapacity}
+                    onChange={(event) => onFieldChange('profileValidation.financialCapacity', event.target.value)}
+                    options={financialCapacitySelectOptions}
+                    readOnly={readOnly}
+                    fieldPath="profileValidation.financialCapacity"
+                  />
+                </FormField>
+                <FormField label="Capacidade emocional">
+                  <TextInput value={input.profileValidation.emotionalCapacity} onChange={(event) => onFieldChange('profileValidation.emotionalCapacity', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.emotionalCapacity" />
+                </FormField>
+                <FormField label="Benchmark referencia para longo prazo">
+                  <TextInput value={input.profileValidation.benchmarkLabel} onChange={(event) => onFieldChange('profileValidation.benchmarkLabel', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.benchmarkLabel" />
+                </FormField>
+                <FormField label="Taxa do benchmark (%)">
+                  <LocalizedNumberInput value={input.profileValidation.benchmarkRate} step="0.01" onChange={(event) => onFieldChange('profileValidation.benchmarkRate', event.target.value, 'number')} readOnly={readOnly} fieldPath="profileValidation.benchmarkRate" clearOnFocus className={inputClassName(readOnly)} />
+                </FormField>
+                <FormField label="Prazo">
+                  <TextInput value={input.profileValidation.term} onChange={(event) => onFieldChange('profileValidation.term', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.term" />
+                </FormField>
+                <FormField label="Itens validados?">
+                  <BooleanSelect value={input.profileValidation.validated} onChange={(value) => onFieldChange('profileValidation.validated', value)} readOnly={readOnly} fieldPath="profileValidation.validated" />
+                </FormField>
+              </div>
+              <FormField label="Observacoes">
+                <TextAreaInput
+                  value={input.profileValidation.notes}
+                  onChange={(event) => onFieldChange('profileValidation.notes', event.target.value)}
                   readOnly={readOnly}
-                  fieldPath="profileValidation.suggestedProfile"
+                  fieldPath="profileValidation.notes"
                 />
-              </FormField>
-              <FormField label="Capacidade financeira">
-                <TextInput value={input.profileValidation.financialCapacity} onChange={(event) => onFieldChange('profileValidation.financialCapacity', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.financialCapacity" />
-              </FormField>
-              <FormField label="Capacidade emocional">
-                <TextInput value={input.profileValidation.emotionalCapacity} onChange={(event) => onFieldChange('profileValidation.emotionalCapacity', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.emotionalCapacity" />
-              </FormField>
-              <FormField label="Benchmark referencia para longo prazo">
-                <TextInput value={input.profileValidation.benchmarkLabel} onChange={(event) => onFieldChange('profileValidation.benchmarkLabel', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.benchmarkLabel" />
-              </FormField>
-              <FormField label="Taxa do benchmark (%)">
-                <LocalizedNumberInput value={input.profileValidation.benchmarkRate} step="0.01" onChange={(event) => onFieldChange('profileValidation.benchmarkRate', event.target.value, 'number')} readOnly={readOnly} fieldPath="profileValidation.benchmarkRate" clearOnFocus className={inputClassName(readOnly)} />
-              </FormField>
-              <FormField label="Prazo">
-                <TextInput value={input.profileValidation.term} onChange={(event) => onFieldChange('profileValidation.term', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.term" />
-              </FormField>
-              <FormField label="Itens validados?">
-                <BooleanSelect value={input.profileValidation.validated} onChange={(value) => onFieldChange('profileValidation.validated', value)} readOnly={readOnly} fieldPath="profileValidation.validated" />
-              </FormField>
-              <FormField label="Comentario">
-                <TextInput value={input.profileValidation.notes} onChange={(event) => onFieldChange('profileValidation.notes', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.notes" />
               </FormField>
             </div>
           </div>
@@ -822,45 +993,209 @@ export function Vision360Form({
 
         <div className={blockClassName()}>
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.22em] text-clay">7. Blindagem patrimonial</p>
-          <div className="overflow-x-auto rounded-[18px] border border-slate/10">
-            <table className="min-w-full border-collapse text-sm text-slate">
-              <thead className="bg-[#e8f0fb]">
-                <tr>
-                  <th className="px-3 py-2 text-left">Cobertura</th>
-                  <th className="px-3 py-2 text-left">Possui?</th>
-                  <th className="px-3 py-2 text-left">Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {protectionRows.map(([label, booleanPath, valuePath]) => {
-                  const hasCoverage = booleanPath.split('.').reduce((cursor, key) => cursor?.[key], input);
-                  const coverageValue = valuePath.split('.').reduce((cursor, key) => cursor?.[key], input);
+          {!readOnly ? (
+            <div className="mb-4 flex flex-wrap items-end gap-3 rounded-[20px] border border-slate/10 bg-[#f8fbff] p-4">
+              <div className="min-w-[260px] flex-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">
+                  Adicionar cobertura
+                </label>
+                <select
+                  className={inputClassName(false)}
+                  value={selectedProtectionPreset}
+                  onChange={(event) => setSelectedProtectionPreset(event.target.value)}
+                >
+                  <option value="">Selecione uma cobertura</option>
+                  {protectionPresetOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleAddProtectionPolicy(selectedProtectionPreset)}
+                disabled={!selectedProtectionPreset}
+                className="h-11 rounded-full border border-slate/15 bg-white px-4 text-sm font-semibold text-slate transition hover:border-slate/30 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Adicionar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddProtectionPolicy('')}
+                className="h-11 rounded-full border border-slate/15 bg-[#eef4fb] px-4 text-sm font-semibold text-slate transition hover:border-slate/30"
+              >
+                Adicionar outra cobertura
+              </button>
+            </div>
+          ) : null}
+          {visibleProtectionPolicies.length === 0 ? (
+            <div className="rounded-[20px] border border-dashed border-slate/15 bg-[#fafbfd] px-4 py-5 text-sm text-slate/60">
+              {readOnly
+                ? 'Nenhuma cobertura patrimonial informada.'
+                : 'Nenhuma cobertura adicionada ainda. Use o seletor acima para incluir a blindagem patrimonial do cliente.'}
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {visibleProtectionPolicies.map(({ policy, index }) => {
+                const coverageValue = policy.coverage ?? policy.name ?? '';
+                const idealValue = policy.idealValue ?? 0;
+                const currentValue = policy.currentValue ?? policy.value ?? 0;
+                const coverageYears = policy.coverageYears ?? policy.years ?? 0;
+                const monthlyPremium = policy.monthlyPremium ?? 0;
+                const fileInputId = `protection-policy-file-${policy.id ?? index}`;
+                const documentLabel = policy.documentName || (policy.documentId ? 'PDF salvo para esta cobertura.' : 'Nenhum PDF anexado.');
+                const documentStatus = policy.contentBase64
+                  ? 'PDF pronto para ser salvo.'
+                  : policy.documentId
+                    ? 'PDF salvo no banco de dados.'
+                    : 'Faça upload de um PDF desta cobertura.';
 
-                  return (
-                    <tr key={label} className="border-t border-slate/10">
-                      <td className="min-w-[220px] px-3 py-2 font-semibold">{label}</td>
-                      <td className="min-w-[120px] px-3 py-2"><BooleanSelect value={hasCoverage} onChange={(value) => onFieldChange(booleanPath, value)} readOnly={readOnly} fieldPath={booleanPath} /></td>
-                      <td className="min-w-[160px] px-3 py-2"><LocalizedNumberInput value={coverageValue} step="0.01" onChange={(event) => onFieldChange(valuePath, event.target.value, 'number')} readOnly={readOnly} fieldPath={valuePath} clearOnFocus className={inputClassName(readOnly)} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <FormField label="Cobertura adicional - educacao e dependentes">
-              <BooleanSelect value={input.protection.dependentEducationInterest} onChange={(value) => onFieldChange('protection.dependentEducationInterest', value)} readOnly={readOnly} fieldPath="protection.dependentEducationInterest" />
-            </FormField>
-            <FormField label="Anos de cobertura">
-              <LocalizedNumberInput value={input.protection.dependentEducationYears} onChange={(event) => onFieldChange('protection.dependentEducationYears', event.target.value, 'number')} readOnly={readOnly} fieldPath="protection.dependentEducationYears" min="0" fractionDigits={0} className={inputClassName(readOnly)} />
-            </FormField>
-            <FormField label="Valor do auxilio mensal">
-              <LocalizedNumberInput value={input.protection.dependentEducationMonthlyAid} step="0.01" onChange={(event) => onFieldChange('protection.dependentEducationMonthlyAid', event.target.value, 'number')} readOnly={readOnly} fieldPath="protection.dependentEducationMonthlyAid" clearOnFocus className={inputClassName(readOnly)} />
-            </FormField>
-            <FormField label="Valor ideal para cobertura adicional">
-              <LocalizedNumberInput value={input.protection.dependentEducationIdealCoverage} step="0.01" onChange={(event) => onFieldChange('protection.dependentEducationIdealCoverage', event.target.value, 'number')} readOnly={readOnly} fieldPath="protection.dependentEducationIdealCoverage" clearOnFocus className={inputClassName(readOnly)} />
-            </FormField>
-          </div>
+                return (
+                  <div key={policy.id ?? `protection-policy-${index}`} className="rounded-[20px] border border-slate/10 bg-[#fbfcfe] p-4">
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">
+                          Cobertura {formatPlainNumber(index + 1)}
+                        </p>
+                        <p className="mt-1 font-semibold text-slate">{coverageValue || 'Nova cobertura'}</p>
+                      </div>
+                      {!readOnly ? (
+                        <button
+                          type="button"
+                          onClick={() => onRemovePolicy(index)}
+                          className="rounded-full border border-[#c24d2c]/20 bg-[#fff4ef] px-3 py-1.5 text-xs font-semibold text-[#9f3518] transition hover:border-[#c24d2c]/40"
+                        >
+                          Remover
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_repeat(4,minmax(0,160px))_minmax(0,120px)]">
+                      <FormField label="Cobertura">
+                        <TextInput
+                          value={coverageValue}
+                          onChange={(event) => onPolicyFieldChange(index, 'coverage', event.target.value)}
+                          readOnly={readOnly}
+                          fieldPath={`protection.policies.${index}.coverage`}
+                        />
+                      </FormField>
+                      <FormField label="Valor ideal">
+                        <LocalizedNumberInput
+                          value={idealValue}
+                          step="0.01"
+                          onChange={(event) => onPolicyFieldChange(index, 'idealValue', event.target.value, 'number')}
+                          readOnly={readOnly}
+                          fieldPath={`protection.policies.${index}.idealValue`}
+                          clearOnFocus
+                          className={inputClassName(readOnly)}
+                        />
+                      </FormField>
+                      <FormField label="Valor atual">
+                        <LocalizedNumberInput
+                          value={currentValue}
+                          step="0.01"
+                          onChange={(event) => onPolicyFieldChange(index, 'currentValue', event.target.value, 'number')}
+                          readOnly={readOnly}
+                          fieldPath={`protection.policies.${index}.currentValue`}
+                          clearOnFocus
+                          className={inputClassName(readOnly)}
+                        />
+                      </FormField>
+                      <FormField label="Anos de cobertura">
+                        <LocalizedNumberInput
+                          value={coverageYears}
+                          onChange={(event) => onPolicyFieldChange(index, 'coverageYears', event.target.value, 'number')}
+                          readOnly={readOnly}
+                          fieldPath={`protection.policies.${index}.coverageYears`}
+                          min="0"
+                          fractionDigits={0}
+                          className={inputClassName(readOnly)}
+                        />
+                      </FormField>
+                      <FormField label="Valor da parcela mensal">
+                        <LocalizedNumberInput
+                          value={monthlyPremium}
+                          step="0.01"
+                          onChange={(event) => onPolicyFieldChange(index, 'monthlyPremium', event.target.value, 'number')}
+                          readOnly={readOnly}
+                          fieldPath={`protection.policies.${index}.monthlyPremium`}
+                          clearOnFocus
+                          className={inputClassName(readOnly)}
+                        />
+                      </FormField>
+                      <div className="flex flex-col justify-end">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">PDF</p>
+                        {readOnly ? (
+                          policy.documentId ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenProtectionPdf(policy)}
+                              disabled={openingProtectionDocumentId === policy.documentId}
+                              className="flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-[#f5f7fa] text-slate/60 transition hover:border-[#355f9b]/30 hover:bg-[#eef4fb] hover:text-[#355f9b] disabled:cursor-wait disabled:opacity-60"
+                              title="Abrir PDF da cobertura"
+                              aria-label="Abrir PDF da cobertura"
+                            >
+                              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M7 3.75h6l4 4V20.25A1.75 1.75 0 0115.25 22h-8.5A1.75 1.75 0 015 20.25V5.5A1.75 1.75 0 016.75 3.75z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 3.75v4h4" />
+                              </svg>
+                            </button>
+                          ) : (
+                            <div className="flex h-11 items-center justify-center rounded-xl border border-slate/10 bg-[#f5f7fa] text-slate/50">
+                              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M7 3.75h6l4 4V20.25A1.75 1.75 0 0115.25 22h-8.5A1.75 1.75 0 015 20.25V5.5A1.75 1.75 0 016.75 3.75z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 3.75v4h4" />
+                              </svg>
+                            </div>
+                          )
+                        ) : (
+                          <>
+                            <input
+                              id={fileInputId}
+                              type="file"
+                              accept="application/pdf"
+                              className="hidden"
+                              onChange={(event) => onPolicyFileChange(index, event.target.files?.[0] ?? null)}
+                            />
+                            <label
+                              htmlFor={fileInputId}
+                              className="flex h-11 cursor-pointer items-center justify-center rounded-xl border border-slate/15 bg-white text-slate transition hover:border-slate/30"
+                              title="Anexar PDF da cobertura"
+                            >
+                              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M7 3.75h6l4 4V20.25A1.75 1.75 0 0115.25 22h-8.5A1.75 1.75 0 015 20.25V5.5A1.75 1.75 0 016.75 3.75z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 3.75v4h4" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v6" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 14.5L12 17l2.5-2.5" />
+                              </svg>
+                            </label>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {!readOnly ? (
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-slate/10 bg-white px-4 py-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Arquivo PDF</p>
+                          <p className="mt-1 text-sm font-semibold text-slate">{documentLabel}</p>
+                          <p className="mt-1 text-xs text-slate/55">{documentStatus}</p>
+                        </div>
+                        {(policy.documentName || policy.documentId || policy.contentBase64) ? (
+                          <button
+                            type="button"
+                            onClick={() => onPolicyFileChange(index, null)}
+                            className="rounded-full border border-slate/15 bg-[#f4f7fb] px-3 py-1.5 text-xs font-semibold text-slate transition hover:border-slate/30"
+                          >
+                            Remover PDF
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className={blockClassName()}>
@@ -897,22 +1232,166 @@ export function Vision360Form({
             <FormField label="VGBL">
               <LocalizedNumberInput value={input.succession.vgbl} step="0.01" onChange={(event) => onFieldChange('succession.vgbl', event.target.value, 'number')} readOnly={readOnly} fieldPath="succession.vgbl" clearOnFocus className={inputClassName(readOnly)} />
             </FormField>
-            <div className="md:col-span-2 xl:col-span-2">
-              <FormField label="Seguro de vida">
-                <LocalizedNumberInput value={input.succession.lifeInsurance} step="0.01" onChange={(event) => onFieldChange('succession.lifeInsurance', event.target.value, 'number')} readOnly={readOnly} fieldPath="succession.lifeInsurance" clearOnFocus className={inputClassName(readOnly)} />
-              </FormField>
+            <div className="md:col-span-2 xl:col-span-4">
+              <div className="rounded-[20px] border border-slate/10 bg-[#fbfcfe] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate">Bens comuns (aquestos) - total do casal</p>
+                    <p className="mt-1 text-xs text-slate/55">Adicione nome, valor e observacoes de cada bem para compor o total.</p>
+                  </div>
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      onClick={onAddSuccessionCommonAsset}
+                      className="rounded-full border border-slate/15 bg-[#f4f7fb] px-4 py-2 text-sm font-semibold text-slate transition hover:border-slate/30"
+                    >
+                      Adicionar bem
+                    </button>
+                  ) : null}
+                </div>
+                {visibleSuccessionCommonAssets.length === 0 ? (
+                  <div className="mt-4 rounded-[18px] border border-dashed border-slate/15 bg-white px-4 py-5 text-sm text-slate/60">
+                    {readOnly ? 'Nenhum bem comum informado.' : 'Nenhum bem comum adicionado ainda.'}
+                  </div>
+                ) : (
+                  <div className="mt-4 grid gap-3">
+                    {visibleSuccessionCommonAssets.map(({ item, index }) => {
+                      const rowId = item.id ?? `succession-common-asset-${index}`;
+                      const namePath = `succession.commonAssetsItems.${index}.name`;
+                      const valuePath = `succession.commonAssetsItems.${index}.value`;
+                      const notesPath = `succession.commonAssetsItems.${index}.notes`;
+                      const hasNotes = String(item.notes ?? '').trim().length > 0;
+                      const isNotesExpanded = Boolean(expandedSuccessionCommonAssetNotes[rowId]);
+
+                      return (
+                        <div key={rowId} className="rounded-[18px] border border-slate/10 bg-white p-4">
+                          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">
+                              Bem do casal {formatPlainNumber(index + 1)}
+                            </p>
+                            {!readOnly ? (
+                              <button
+                                type="button"
+                                onClick={() => onRemoveSuccessionCommonAsset(index)}
+                                className="rounded-full border border-[#c24d2c]/20 bg-[#fff4ef] px-3 py-1.5 text-xs font-semibold text-[#9f3518] transition hover:border-[#c24d2c]/40"
+                              >
+                                Remover
+                              </button>
+                            ) : null}
+                          </div>
+                          <div className={`grid gap-3 ${readOnly ? 'md:grid-cols-[minmax(0,0.9fr)_180px_140px]' : 'md:grid-cols-[minmax(0,1fr)_220px]'} md:items-start`}>
+                            <FormField label="Nome">
+                              {readOnly ? (
+                                <div className={`${inputClassName(true)} flex h-11 items-center`} data-field-path={namePath}>
+                                  {item.name || '-'}
+                                </div>
+                              ) : (
+                                <TextInput
+                                  value={item.name}
+                                  onChange={(event) => onFieldChange(namePath, event.target.value)}
+                                  readOnly={readOnly}
+                                  fieldPath={namePath}
+                                />
+                              )}
+                            </FormField>
+                            <FormField label="Valor">
+                              {readOnly ? (
+                                <div className={`${inputClassName(true)} flex h-11 items-center`} data-field-path={valuePath}>
+                                  {formatTableNumber(item.value)}
+                                </div>
+                              ) : (
+                                <LocalizedNumberInput
+                                  value={item.value}
+                                  step="0.01"
+                                  onChange={(event) => onFieldChange(valuePath, event.target.value, 'number')}
+                                  readOnly={readOnly}
+                                  fieldPath={valuePath}
+                                  clearOnFocus
+                                  className={inputClassName(readOnly)}
+                                />
+                              )}
+                            </FormField>
+                            {readOnly ? (
+                              <FormField label="Observações">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleSuccessionCommonAssetNotes(rowId)}
+                                  className="h-11 w-full rounded-full border border-slate/15 bg-[#f4f7fb] px-3 py-2 text-xs font-semibold text-slate transition hover:border-slate/30"
+                                >
+                                  {isNotesExpanded ? 'Fechar' : 'Observações'}
+                                </button>
+                              </FormField>
+                            ) : null}
+                          </div>
+                          {readOnly && isNotesExpanded ? (
+                            <div className="mt-3 rounded-[18px] border border-slate/10 bg-[#f8fbff] p-4">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate/45">Observações</p>
+                              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate/80" data-field-path={notesPath}>
+                                {hasNotes ? item.notes : 'Sem observações.'}
+                              </p>
+                            </div>
+                          ) : null}
+                          {!readOnly ? (
+                            <FormField label="Observacoes">
+                              <textarea
+                                className={`${inputClassName(readOnly)} min-h-[96px] resize-y`}
+                                value={item.notes ?? ''}
+                                onChange={readOnly ? undefined : (event) => onFieldChange(notesPath, event.target.value)}
+                                readOnly={readOnly}
+                                data-field-path={notesPath}
+                              />
+                            </FormField>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="mt-4 grid gap-3 md:grid-cols-1 xl:max-w-[320px]">
+                  <SummaryValue label="Total de bens do casal" value={successionCommonAssetsTotal} />
+                </div>
+              </div>
             </div>
-            <FormField label="Bens comuns (aquestos) - total do casal">
-              <LocalizedNumberInput value={input.succession.commonAssets} step="0.01" onChange={(event) => onFieldChange('succession.commonAssets', event.target.value, 'number')} readOnly={readOnly} fieldPath="succession.commonAssets" clearOnFocus className={inputClassName(readOnly)} />
-            </FormField>
-            <FormField label="Bens particulares">
-              <LocalizedNumberInput value={input.succession.privateAssets} step="0.01" onChange={(event) => onFieldChange('succession.privateAssets', event.target.value, 'number')} readOnly={readOnly} fieldPath="succession.privateAssets" clearOnFocus className={inputClassName(readOnly)} />
-            </FormField>
-            <FormField label="Dividas">
-              <LocalizedNumberInput value={input.succession.debts} step="0.01" onChange={(event) => onFieldChange('succession.debts', event.target.value, 'number')} readOnly={readOnly} fieldPath="succession.debts" clearOnFocus className={inputClassName(readOnly)} />
-            </FormField>
             <FormField label="Potenciais conflitos na sucessao?">
-              <TextInput value={input.succession.conflictsComment} onChange={(event) => onFieldChange('succession.conflictsComment', event.target.value)} readOnly={readOnly} fieldPath="succession.conflictsComment" />
+              {readOnly ? (
+                <div className="min-w-0 space-y-2">
+                  {isSuccessionConflictExpanded ? (
+                    <div className="min-w-0 rounded-xl border border-slate/10 bg-[#f5f7fa] p-3">
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate/90" data-field-path="succession.conflictsComment">
+                          {hasSuccessionConflictComment ? successionConflictComment : 'Sem observacoes.'}
+                        </p>
+                        {hasSuccessionConflictComment ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsSuccessionConflictExpanded(false)}
+                            className="shrink-0 rounded-full border border-slate/15 bg-white px-3 py-1.5 text-xs font-semibold text-slate transition hover:border-slate/30"
+                          >
+                            Ver menos
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`${inputClassName(true)} min-w-0 flex h-11 items-center gap-3 overflow-hidden`}>
+                      <span className="min-w-0 flex-1 truncate text-slate/90" data-field-path="succession.conflictsComment">
+                        {hasSuccessionConflictComment ? successionConflictComment : 'Sem observacoes.'}
+                      </span>
+                      {hasSuccessionConflictComment ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsSuccessionConflictExpanded(true)}
+                          className="shrink-0 rounded-full border border-slate/15 bg-white px-3 py-1.5 text-xs font-semibold text-slate transition hover:border-slate/30"
+                        >
+                          Ver mais
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <TextInput value={input.succession.conflictsComment} onChange={(event) => onFieldChange('succession.conflictsComment', event.target.value)} readOnly={readOnly} fieldPath="succession.conflictsComment" />
+              )}
             </FormField>
             <FormField label="Voce tem testamento?">
               <BooleanSelect value={input.succession.hasWill} onChange={(value) => onFieldChange('succession.hasWill', value)} readOnly={readOnly} fieldPath="succession.hasWill" />

@@ -177,6 +177,12 @@ function PolicyDetailsModal({ policy, onClose }) {
 
   if (!policy) return null;
 
+  const policyCoverage = policy.coverage || policy.name || 'Nao informado';
+  const policyCurrentValue = Number(policy.currentValue ?? policy.value ?? 0);
+  const policyIdealValue = Number(policy.idealValue ?? 0);
+  const policyCoverageYears = Number(policy.coverageYears ?? policy.years ?? 0);
+  const policyMonthlyPremium = Number(policy.monthlyPremium ?? 0);
+
   async function handleOpenPdf() {
     if (!policy.documentId) return;
 
@@ -222,24 +228,30 @@ function PolicyDetailsModal({ policy, onClose }) {
 
         <div className="grid gap-4">
           <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
-            <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Nome da Cobertura</p>
-            <p className="text-[#173d5d] font-medium">{policy.name || 'Nao informado'}</p>
+            <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Cobertura</p>
+            <p className="text-[#173d5d] font-medium">{policyCoverage}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
-              <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Seguradora</p>
-              <p className="text-[#173d5d] font-medium">{policy.company || 'Nao informada'}</p>
+              <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Valor Atual</p>
+              <p className="text-[#173d5d] font-medium">{formatTableNumber(policyCurrentValue)}</p>
             </div>
             <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
-              <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Prazo</p>
-              <p className="text-[#173d5d] font-medium">{policy.years ? `${policy.years} anos` : 'Nao informado'}</p>
+              <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Valor Ideal</p>
+              <p className="text-[#173d5d] font-medium">{formatTableNumber(policyIdealValue)}</p>
             </div>
           </div>
 
-          <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
-            <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Valor Segurado</p>
-            <p className="text-lg text-[#173d5d] font-semibold">{formatTableNumber(policy.value)}</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
+              <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Anos de Cobertura</p>
+              <p className="text-[#173d5d] font-medium">{policyCoverageYears ? `${policyCoverageYears} anos` : 'Nao informado'}</p>
+            </div>
+            <div className="rounded-2xl bg-[#f8fbff] p-4 border border-[#173d5d]/5">
+              <p className="text-[10px] uppercase tracking-widest text-slate/50 font-semibold mb-1">Parcela Mensal</p>
+              <p className="text-[#173d5d] font-medium">{formatTableNumber(policyMonthlyPremium)}</p>
+            </div>
           </div>
 
           {policy.documentId && (
@@ -395,12 +407,14 @@ export function ExecutiveDashboard({ input, control, succession }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                           </svg>
                         </div>
-                        <p className="truncate text-sm font-semibold text-[#173d5d]">{policy.name || 'Cobertura'}</p>
+                        <p className="truncate text-sm font-semibold text-[#173d5d]">{policy.coverage || policy.name || 'Cobertura'}</p>
                       </div>
-                      <p className="shrink-0 text-base font-bold text-[#173d5d]">{formatTableNumber(policy.value)}</p>
+                      <p className="shrink-0 text-base font-bold text-[#173d5d]">{formatTableNumber(Number(policy.currentValue ?? policy.value ?? 0))}</p>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between pl-[18px]">
-                      <p className="text-[11px] text-slate/40 uppercase tracking-wider truncate">{policy.company || 'Seguradora'}</p>
+                      <p className="text-[11px] text-slate/40 uppercase tracking-wider truncate">
+                        {policy.documentName || (policy.coverageYears ? `${policy.coverageYears} anos` : 'Sem PDF')}
+                      </p>
                     {policy.documentId && (
                       <svg className="h-2.5 w-2.5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A1 1 0 0111.293 2.707l5 5a1 1 0 01.293.707V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />

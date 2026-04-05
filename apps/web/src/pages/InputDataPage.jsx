@@ -60,11 +60,16 @@ function buildBirthDateFromAge(ageValue) {
 	return birthDate.toISOString().slice(0, 10);
 }
 
+function sumSuccessionCommonAssetsItems(items = []) {
+	return items.reduce((total, item) => total + Number(item?.value ?? 0), 0);
+}
+
 function applyDerivedInputRules(input) {
 	const nextState = structuredClone(input);
 	const annualContributionGoal = Number(nextState.future.agreedMonthlyContribution ?? 0) * 12 + Number(nextState.planning.extraContributions ?? 0);
 
 	nextState.planning.annualContributionGoal = Number.isFinite(annualContributionGoal) ? annualContributionGoal : 0;
+	nextState.succession.commonAssets = sumSuccessionCommonAssetsItems(nextState.succession.commonAssetsItems ?? []);
 
 	if (!nextState.vision360.budget.emergencyReserveHas) {
 		nextState.vision360.budget.emergencyReserveCurrent = 0;
@@ -438,12 +443,41 @@ export function InputDataPage() {
 		});
 	}
 
-	function handleAddPolicy() {
+	function handleAddSuccessionCommonAsset() {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.succession.commonAssetsItems = [
+				...(nextState.succession.commonAssetsItems ?? []),
+				{ id: crypto.randomUUID(), name: '', value: 0, notes: '' }
+			];
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleRemoveSuccessionCommonAsset(index) {
+		setInput((currentState) => {
+			const nextState = structuredClone(currentState);
+			nextState.succession.commonAssetsItems = (nextState.succession.commonAssetsItems ?? []).filter((_, itemIndex) => itemIndex !== index);
+			return applyDerivedInputRules(nextState);
+		});
+	}
+
+	function handleAddPolicy(policy = {}) {
 		setInput((currentState) => {
 			const nextState = structuredClone(currentState);
 			nextState.protection.policies = [
 				...(nextState.protection.policies ?? []),
-				{ id: crypto.randomUUID(), name: '', years: 0, company: '', value: 0, documentId: null, documentName: null }
+				{
+					id: crypto.randomUUID(),
+					coverage: String(policy.coverage ?? '').trim(),
+					idealValue: Number(policy.idealValue ?? 0),
+					currentValue: Number(policy.currentValue ?? 0),
+					coverageYears: Number(policy.coverageYears ?? 0),
+					monthlyPremium: Number(policy.monthlyPremium ?? 0),
+					company: String(policy.company ?? '').trim(),
+					documentId: policy.documentId ?? null,
+					documentName: policy.documentName ?? null
+				}
 			];
 			return applyDerivedInputRules(nextState);
 		});
@@ -466,11 +500,23 @@ export function InputDataPage() {
 			setInput((currentState) => {
 				const nextState = structuredClone(currentState);
 				const policy = nextState.protection.policies[index];
+
+				if (!policy) {
+					return applyDerivedInputRules(nextState);
+				}
+
 				delete policy.contentBase64;
 				policy.documentName = null;
 				policy.documentId = null;
 				return applyDerivedInputRules(nextState);
 			});
+			return;
+		}
+
+		const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+		if (!isPdf) {
+			setError('Anexe apenas arquivos PDF nas coberturas da blindagem patrimonial.');
 			return;
 		}
 
@@ -480,6 +526,11 @@ export function InputDataPage() {
 			setInput((currentState) => {
 				const nextState = structuredClone(currentState);
 				const policy = nextState.protection.policies[index];
+
+				if (!policy) {
+					return applyDerivedInputRules(nextState);
+				}
+
 				policy.contentBase64 = base64;
 				policy.documentName = file.name;
 				policy.documentId = null;
@@ -673,6 +724,8 @@ export function InputDataPage() {
 					onRemoveAsset={handleRemoveAsset}
 					onAddLiability={handleAddLiability}
 					onRemoveLiability={handleRemoveLiability}
+					onAddSuccessionCommonAsset={handleAddSuccessionCommonAsset}
+					onRemoveSuccessionCommonAsset={handleRemoveSuccessionCommonAsset}
 					onAddPolicy={handleAddPolicy}
 					onRemovePolicy={handleRemovePolicy}
 					onPolicyFieldChange={handlePolicyFieldChange}
