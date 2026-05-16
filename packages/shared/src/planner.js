@@ -1,0 +1,983 @@
+import {
+  buildDefaultMonthlyContributions,
+  cloneDefaultPlannerInput,
+  contributionMonthLabels,
+  investorProfiles,
+  maritalRegimes,
+  protectionLayerFields
+} from './schema.js';
+
+function toNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function toBoolean(value) {
+  return Boolean(value);
+}
+
+function normalizeKey(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+const contributionMonthIndexByKey = contributionMonthLabels.reduce((indexes, month, index) => {
+  indexes[normalizeKey(month)] = index;
+  return indexes;
+}, {});
+
+function isValidContributionDate(value) {
+  const normalizedValue = String(value ?? '').trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
+    return false;
+  }
+
+  const [year, month, day] = normalizedValue.split('-').map(Number);
+  const parsedDate = new Date(year, month - 1, day);
+
+  return (
+    parsedDate.getFullYear() === year &&
+    parsedDate.getMonth() === month - 1 &&
+    parsedDate.getDate() === day
+  );
+}
+
+export function normalizeContributionDate(value) {
+  return isValidContributionDate(value) ? String(value).trim() : '';
+}
+
+function resolveMonthIndexFromDate(value) {
+  if (!isValidContributionDate(value)) {
+    return null;
+  }
+
+  return Number(String(value).slice(5, 7)) - 1;
+}
+
+function resolveMonthIndexFromLabel(value) {
+  const normalizedValue = normalizeKey(value);
+
+  if (normalizedValue in contributionMonthIndexByKey) {
+    return contributionMonthIndexByKey[normalizedValue];
+  }
+
+  const placeholderMatch = normalizedValue.match(/^mes\s+(\d+)$/i);
+
+  if (!placeholderMatch) {
+    return null;
+  }
+
+  const placeholderIndex = Number(placeholderMatch[1]) - 1;
+  return placeholderIndex >= 0 && placeholderIndex < contributionMonthLabels.length ? placeholderIndex : null;
+}
+
+function resolveContributionMonthIndex(item, fallbackIndex) {
+  const monthIndexFromDate = resolveMonthIndexFromDate(item?.date);
+
+  if (monthIndexFromDate != null) {
+    return monthIndexFromDate;
+  }
+
+  const monthIndexFromLabel = resolveMonthIndexFromLabel(item?.month);
+
+  if (monthIndexFromLabel != null) {
+    return monthIndexFromLabel;
+  }
+
+  return fallbackIndex >= 0 && fallbackIndex < contributionMonthLabels.length ? fallbackIndex : null;
+}
+
+export function normalizeMonthlyContributions(items = []) {
+  const normalizedItems = buildDefaultMonthlyContributions();
+
+  if (!Array.isArray(items)) {
+    return normalizedItems;
+  }
+
+  items.forEach((item, index) => {
+    const monthIndex = resolveContributionMonthIndex(item, index);
+
+    if (monthIndex == null) {
+      return;
+    }
+
+    const fallbackDate = normalizeContributionDate(item?.date);
+    const fallbackGoalId = String(item?.savingsGoalId ?? '').trim();
+    const sourceEntries = Array.isArray(item?.entries) && item.entries.length > 0
+      ? item.entries
+      : Math.max(0, toNumber(item?.amount)) > 0 || fallbackDate
+        ? [{ id: item?.id, amount: item?.amount, date: fallbackDate, savingsGoalId: fallbackGoalId }]
+        : [];
+    const nextEntries = sourceEntries
+      .map((entry, entryIndex) => ({
+        id: String(entry?.id ?? `${contributionMonthLabels[monthIndex]}-${entryIndex}`).trim() || `${contributionMonthLabels[monthIndex]}-${entryIndex}`,
+        amount: Math.max(0, toNumber(entry?.amount)),
+        date: normalizeContributionDate(entry?.date) || fallbackDate,
+        savingsGoalId: String(entry?.savingsGoalId ?? fallbackGoalId).trim()
+      }))
+      .filter((entry) => entry.amount > 0 || entry.date || entry.savingsGoalId);
+
+    if (nextEntries.length === 0) {
+      return;
+    }
+
+    const currentItem = normalizedItems[monthIndex];
+    const entries = [...(currentItem.entries ?? []), ...nextEntries];
+    const amount = entries.reduce((total, entry) => total + toNumber(entry?.amount), 0);
+    const latestEntry = entries.at(-1);
+
+    normalizedItems[monthIndex] = {
+      month: contributionMonthLabels[monthIndex],
+      amount,
+      date: latestEntry?.date ?? '',
+      savingsGoalId: latestEntry?.savingsGoalId ?? '',
+      entries
+    };
+  });
+
+  return normalizedItems;
+}
+
+export function normalizeSavingsGoals(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item, index) => ({
+    id: String(item?.id ?? `goal-${index}`).trim() || `goal-${index}`,
+    title: String(item?.title ?? ''),
+    amount: Math.max(0, toNumber(item?.amount))
+  }));
+}
+
+export function sumSavingsGoals(items = []) {
+  return items.reduce((total, item) => total + Math.max(0, toNumber(item?.amount)), 0);
+}
+
+function resolveTotalContributed(rawTotal, monthlyContributions = []) {
+  const monthlyTotal = monthlyContributions.reduce((total, item) => total + toNumber(item?.amount), 0);
+  const explicitTotal = Math.max(0, toNumber(rawTotal));
+
+  return monthlyTotal > 0 || explicitTotal === 0 ? monthlyTotal : explicitTotal;
+}
+
+function roundCurrency(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function clampPercent(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(Math.max(value, 0), 100);
+}
+
+export function calculateAgeFromBirthDate(birthDateValue) {
+  const birthDate = new Date(`${birthDateValue}T00:00:00Z`);
+
+  if (Number.isNaN(birthDate.getTime())) {
+    throw new Error('invalid birth date');
+  }
+
+  const today = new Date();
+  let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+  const monthDifference = today.getUTCMonth() - birthDate.getUTCMonth();
+
+  if (monthDifference < 0 || (monthDifference === 0 && today.getUTCDate() < birthDate.getUTCDate())) {
+    age -= 1;
+  }
+
+  return Math.max(age, 0);
+}
+
+function annualToMonthlyRate(annualRate) {
+  if (annualRate <= -1) {
+    return -1;
+  }
+
+  return (1 + annualRate) ** (1 / 12) - 1;
+}
+
+function calculateFutureValue({ presentValue, monthlyContribution, monthlyRate, totalMonths }) {
+  if (totalMonths <= 0) {
+    return presentValue;
+  }
+
+  if (monthlyRate === 0) {
+    return presentValue + monthlyContribution * totalMonths;
+  }
+
+  const factor = (1 + monthlyRate) ** totalMonths;
+  return presentValue * factor + monthlyContribution * (((factor - 1) / monthlyRate) || 0);
+}
+
+function buildAccumulationProjection({ currentAge, targetAge, openingBalance, monthlyContribution, annualRate }) {
+  const projection = [];
+  const monthlyRate = annualToMonthlyRate(annualRate);
+  let portfolioValue = openingBalance;
+  let investedTotal = openingBalance;
+
+  projection.push({
+    age: currentAge,
+    investedTotal: roundCurrency(investedTotal),
+    interestValue: 0,
+    portfolioValue: roundCurrency(portfolioValue)
+  });
+
+  for (let age = currentAge + 1; age <= targetAge; age += 1) {
+    portfolioValue = calculateFutureValue({
+      presentValue: portfolioValue,
+      monthlyContribution,
+      monthlyRate,
+      totalMonths: 12
+    });
+    investedTotal += monthlyContribution * 12;
+
+    projection.push({
+      age,
+      investedTotal: roundCurrency(investedTotal),
+      interestValue: roundCurrency(portfolioValue - investedTotal),
+      portfolioValue: roundCurrency(portfolioValue)
+    });
+  }
+
+  return projection;
+}
+
+function buildPerpetuityProjection({
+  targetAge,
+  endingAge,
+  openingBalance,
+  annualYieldRate,
+  desiredMonthlySpend,
+  externalMonthlyIncome
+}) {
+  const projection = [];
+  let previousBalance = openingBalance;
+  const annualSpend = desiredMonthlySpend * 12;
+  const annualExternalIncome = externalMonthlyIncome * 12;
+
+  for (let age = targetAge; age <= endingAge; age += 1) {
+    const income = previousBalance * annualYieldRate;
+    const currentBalance = previousBalance + income + annualExternalIncome - annualSpend;
+
+    projection.push({
+      age,
+      openingBalance: roundCurrency(previousBalance),
+      yearlyIncome: roundCurrency(income),
+      externalIncome: roundCurrency(annualExternalIncome),
+      yearlySpend: roundCurrency(annualSpend),
+      endingBalance: roundCurrency(currentBalance)
+    });
+
+    previousBalance = currentBalance;
+  }
+
+  return projection;
+}
+
+function normalizeProtectionMatrix(payload = {}, defaults = {}) {
+  const normalized = {};
+
+  protectionLayerFields.forEach(({ key }) => {
+    normalized[key] = toBoolean(payload[key] ?? defaults[key]);
+  });
+
+  return normalized;
+}
+
+function normalizeFamilyMembers(payload = [], defaults = []) {
+  const desiredLength = Math.max(defaults.length, Array.isArray(payload) ? payload.length : 0);
+
+  return Array.from({ length: desiredLength }, (_, index) => {
+    const defaultMember = defaults[index] ?? { name: '', relationship: '', birthDate: '', profession: '' };
+    const payloadMember = Array.isArray(payload) ? payload[index] ?? {} : {};
+
+    return {
+      name: String(payloadMember.name ?? defaultMember.name ?? '').trim(),
+      relationship: String(payloadMember.relationship ?? defaultMember.relationship ?? '').trim(),
+      birthDate: String(payloadMember.birthDate ?? defaultMember.birthDate ?? '').trim(),
+      profession: String(payloadMember.profession ?? defaultMember.profession ?? '').trim()
+    };
+  });
+}
+
+function normalizePatrimonialDescription(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+const legacyProtectionPolicies = [
+  {
+    coverage: 'Cobertura para invalidez total',
+    normalizedCoverage: 'cobertura para invalidez total',
+    flagField: 'totalDisability',
+    currentValueField: 'totalDisabilityCoverage'
+  },
+  {
+    coverage: 'Cobertura para doencas graves',
+    normalizedCoverage: 'cobertura para doencas graves',
+    flagField: 'criticalIllness',
+    currentValueField: 'criticalIllnessCoverage'
+  },
+  {
+    coverage: 'Cirurgias',
+    normalizedCoverage: 'cirurgias',
+    flagField: 'surgeries',
+    currentValueField: 'surgeriesCoverage'
+  },
+  {
+    coverage: 'Diaria por internacao',
+    normalizedCoverage: 'diaria por internacao',
+    flagField: 'hospitalDaily',
+    currentValueField: 'hospitalDailyCoverage'
+  },
+  {
+    coverage: 'DIT (Diaria por incapacidade temporaria)',
+    normalizedCoverage: 'dit (diaria por incapacidade temporaria)',
+    flagField: 'temporaryDisability',
+    currentValueField: 'temporaryDisabilityCoverage'
+  }
+];
+
+const additionalProtectionCoverages = new Set([
+  'cobertura adicional (educacao)',
+  'cobertura adicional (dependentes)'
+]);
+
+function normalizeProtectionCoverageLabel(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function isProtectionPolicyFilled(policy) {
+  return Boolean(
+    String(policy?.coverage ?? '').trim() ||
+      toNumber(policy?.idealValue) > 0 ||
+      toNumber(policy?.currentValue) > 0 ||
+      toNumber(policy?.coverageYears) > 0 ||
+      toNumber(policy?.monthlyPremium) > 0 ||
+      String(policy?.documentId ?? '').trim() ||
+      String(policy?.documentName ?? '').trim()
+  );
+}
+
+function buildLegacyProtectionPolicies(protection = {}) {
+  const basePolicies = legacyProtectionPolicies
+    .map((definition, index) => {
+      const currentValue = Math.max(0, toNumber(protection?.[definition.currentValueField] ?? 0));
+      const enabled = toBoolean(protection?.[definition.flagField]);
+
+      if (!enabled && currentValue === 0) {
+        return null;
+      }
+
+      return {
+        id: `legacy-protection-${index + 1}`,
+        coverage: definition.coverage,
+        idealValue: 0,
+        currentValue,
+        coverageYears: 0,
+        monthlyPremium: 0,
+        company: '',
+        documentId: null,
+        documentName: null
+      };
+    })
+    .filter(Boolean);
+
+  const additionalIdealValue = Math.max(0, toNumber(protection?.dependentEducationIdealCoverage ?? 0));
+  const additionalCoverageYears = Math.max(0, toNumber(protection?.dependentEducationYears ?? 0));
+  const additionalMonthlyPremium = Math.max(0, toNumber(protection?.dependentEducationMonthlyAid ?? 0));
+  const hasAdditionalCoverage =
+    toBoolean(protection?.dependentEducationInterest) ||
+    additionalIdealValue > 0 ||
+    additionalCoverageYears > 0 ||
+    additionalMonthlyPremium > 0;
+
+  if (!hasAdditionalCoverage) {
+    return basePolicies;
+  }
+
+  return [
+    ...basePolicies,
+    {
+      id: `legacy-protection-${basePolicies.length + 1}`,
+      coverage: 'Cobertura adicional (Educacao)',
+      idealValue: additionalIdealValue,
+      currentValue: 0,
+      coverageYears: additionalCoverageYears,
+      monthlyPremium: additionalMonthlyPremium,
+      company: '',
+      documentId: null,
+      documentName: null
+    }
+  ];
+}
+
+function normalizeProtectionPolicies(protection = {}) {
+  const policies = Array.isArray(protection?.policies) && protection.policies.length > 0
+    ? protection.policies
+    : buildLegacyProtectionPolicies(protection);
+
+  return policies
+    .map((policy, index) => ({
+      ...policy,
+      id: String(policy?.id ?? `protection-policy-${index + 1}`),
+      coverage: String(policy?.coverage ?? policy?.name ?? '').trim(),
+      idealValue: Math.max(0, toNumber(policy?.idealValue ?? 0)),
+      currentValue: Math.max(0, toNumber(policy?.currentValue ?? policy?.value ?? 0)),
+      coverageYears: Math.max(0, toNumber(policy?.coverageYears ?? policy?.years ?? 0)),
+      monthlyPremium: Math.max(0, toNumber(policy?.monthlyPremium ?? 0)),
+      company: String(policy?.company ?? '').trim(),
+      documentId: policy?.documentId ? String(policy.documentId) : null,
+      documentName: policy?.documentName ? String(policy.documentName).trim() : null,
+      contentBase64: policy?.contentBase64 ?? undefined
+    }))
+    .filter(isProtectionPolicyFilled);
+}
+
+function buildLegacyProtectionFieldsFromPolicies(policies = []) {
+  const derivedProtectionFields = {
+    totalDisability: false,
+    totalDisabilityCoverage: 0,
+    criticalIllness: false,
+    criticalIllnessCoverage: 0,
+    surgeries: false,
+    surgeriesCoverage: 0,
+    hospitalDaily: false,
+    hospitalDailyCoverage: 0,
+    temporaryDisability: false,
+    temporaryDisabilityCoverage: 0,
+    dependentEducationInterest: false,
+    dependentEducationYears: 0,
+    dependentEducationMonthlyAid: 0,
+    dependentEducationIdealCoverage: 0
+  };
+
+  policies.forEach((policy) => {
+    const normalizedCoverage = normalizeProtectionCoverageLabel(policy.coverage);
+    const currentValue = Math.max(0, toNumber(policy.currentValue));
+    const idealValue = Math.max(0, toNumber(policy.idealValue));
+    const coverageYears = Math.max(0, toNumber(policy.coverageYears));
+    const monthlyPremium = Math.max(0, toNumber(policy.monthlyPremium));
+    const matchedDefinition = legacyProtectionPolicies.find(
+      (definition) => definition.normalizedCoverage === normalizedCoverage
+    );
+
+    if (matchedDefinition) {
+      derivedProtectionFields[matchedDefinition.flagField] = true;
+      derivedProtectionFields[matchedDefinition.currentValueField] += currentValue;
+      return;
+    }
+
+    if (additionalProtectionCoverages.has(normalizedCoverage)) {
+      derivedProtectionFields.dependentEducationInterest = true;
+      derivedProtectionFields.dependentEducationYears = Math.max(
+        derivedProtectionFields.dependentEducationYears,
+        coverageYears
+      );
+      derivedProtectionFields.dependentEducationMonthlyAid += monthlyPremium;
+      derivedProtectionFields.dependentEducationIdealCoverage += idealValue;
+    }
+  });
+
+  return derivedProtectionFields;
+}
+
+function resolvePatrimonialGroup(description, fallbackGroup) {
+  const normalizedDescription = normalizePatrimonialDescription(description);
+
+  if (
+    normalizedDescription === 'ativos financeiros' ||
+    normalizedDescription === 'ativos imobilizados' ||
+    normalizedDescription === 'consorcios'
+  ) {
+    return 'asset';
+  }
+
+  if (normalizedDescription === 'emprestimos') {
+    return 'liability';
+  }
+
+  return fallbackGroup;
+}
+
+function normalizePatrimonialItems(assets = [], liabilities = []) {
+  const normalizedAssets = [];
+  const normalizedLiabilities = [];
+
+  [
+    ...(Array.isArray(assets) ? assets.map((item) => ({ item, fallbackGroup: 'asset' })) : []),
+    ...(Array.isArray(liabilities) ? liabilities.map((item) => ({ item, fallbackGroup: 'liability' })) : [])
+  ].forEach(({ item, fallbackGroup }) => {
+    const normalizedItem = {
+      description: String(item?.description ?? '').trim(),
+      value: Math.max(0, toNumber(item?.value)),
+      comment: String(item?.comment ?? '').trim()
+    };
+
+    if (!normalizedItem.description && normalizedItem.value === 0 && !normalizedItem.comment) {
+      return;
+    }
+
+    if (resolvePatrimonialGroup(normalizedItem.description, fallbackGroup) === 'asset') {
+      normalizedAssets.push(normalizedItem);
+      return;
+    }
+
+    normalizedLiabilities.push(normalizedItem);
+  });
+
+  return {
+    assets: normalizedAssets,
+    liabilities: normalizedLiabilities
+  };
+}
+
+function normalizeSuccessionCommonAssetsItems(items = [], fallbackTotal = 0) {
+  const sourceItems = Array.isArray(items) && items.length > 0
+    ? items
+    : toNumber(fallbackTotal) > 0
+      ? [{ name: 'Bem comum do casal', value: fallbackTotal, notes: '' }]
+      : [];
+
+  return sourceItems
+    .map((item, index) => ({
+      id: String(item?.id ?? `succession-common-asset-${index + 1}`),
+      name: String(item?.name ?? item?.label ?? '').trim(),
+      value: Math.max(0, toNumber(item?.value)),
+      notes: String(item?.notes ?? item?.comment ?? '').trim()
+    }))
+    .filter((item) => item.name || item.value > 0 || item.notes);
+}
+
+function sumSuccessionCommonAssetsItems(items = []) {
+  return items.reduce((total, item) => total + toNumber(item?.value), 0);
+}
+
+function hasOwnValue(source, key) {
+  return source != null && Object.prototype.hasOwnProperty.call(source, key);
+}
+
+export function normalizePlannerInput(payload = {}) {
+  const defaults = cloneDefaultPlannerInput();
+  const normalizedPatrimonialItems = normalizePatrimonialItems(
+    payload.vision360?.assets?.items,
+    payload.vision360?.liabilities?.items
+  );
+  const normalizedSuccessionCommonAssetsItems = normalizeSuccessionCommonAssetsItems(
+    payload.succession?.commonAssetsItems,
+    payload.succession?.commonAssets
+  );
+  const normalizedMonthlyContributionsItems = normalizeMonthlyContributions(payload.control?.monthlyContributions);
+  const normalizedSavingsGoals = normalizeSavingsGoals(payload.planning?.savingsGoals);
+  const currentContributionDate = normalizeContributionDate(payload.control?.currentContributionDate) || defaults.control.currentContributionDate;
+  const totalContributed = resolveTotalContributed(payload.control?.totalContributed, normalizedMonthlyContributionsItems);
+  const input = {
+    ...defaults,
+    ...payload,
+    metadata: {
+      ...defaults.metadata,
+      ...(payload.metadata ?? {})
+    },
+    client: {
+      ...defaults.client,
+      ...(payload.client ?? {})
+    },
+    family: {
+      ...defaults.family,
+      ...(payload.family ?? {})
+    },
+    vision360: {
+      ...defaults.vision360,
+      ...(payload.vision360 ?? {}),
+      assets: {
+        items: normalizedPatrimonialItems.assets
+      },
+      liabilities: {
+        items: normalizedPatrimonialItems.liabilities
+      },
+      budget: {
+        ...defaults.vision360.budget,
+        ...(payload.vision360?.budget ?? {})
+      }
+    },
+    planning: {
+      ...defaults.planning,
+      ...(payload.planning ?? {}),
+      savingsGoals: normalizedSavingsGoals,
+      globalSavingsGoal: sumSavingsGoals(normalizedSavingsGoals)
+    },
+    future: {
+      ...defaults.future,
+      ...(payload.future ?? {})
+    },
+    profileValidation: {
+      ...defaults.profileValidation,
+      ...(payload.profileValidation ?? {})
+    },
+    protection: {
+      ...defaults.protection,
+      ...(payload.protection ?? {})
+    },
+    succession: {
+      ...defaults.succession,
+      ...(payload.succession ?? {}),
+      commonAssetsItems: normalizedSuccessionCommonAssetsItems,
+      commonAssets: sumSuccessionCommonAssetsItems(normalizedSuccessionCommonAssetsItems)
+    },
+    control: {
+      ...defaults.control,
+      ...(payload.control ?? {}),
+      totalContributed,
+      currentContributionDate,
+      monthlyContributions: normalizedMonthlyContributionsItems,
+      protectionNeeds: normalizeProtectionMatrix(payload.control?.protectionNeeds, defaults.control.protectionNeeds),
+      protectionCoverage: normalizeProtectionMatrix(
+        payload.control?.protectionCoverage,
+        defaults.control.protectionCoverage
+      )
+    }
+  };
+
+  input.client.name = String(input.client.name ?? '').trim();
+  input.metadata.lastContactAt = String(input.metadata.lastContactAt ?? '').trim();
+  input.client.birthDate = String(input.client.birthDate ?? '').trim();
+  input.client.profession = String(input.client.profession ?? '').trim();
+  input.client.investorProfile = investorProfiles.includes(input.client.investorProfile)
+    ? input.client.investorProfile
+    : defaults.client.investorProfile;
+
+  input.family.members = normalizeFamilyMembers(payload.family?.members, defaults.family.members);
+
+  [
+
+    ['vision360', 'budget', 'monthlyIncome'],
+    ['vision360', 'budget', 'monthlyExpenses'],
+    ['vision360', 'budget', 'emergencyReserveNeed'],
+    ['vision360', 'budget', 'shortTermReserveTarget'],
+    ['vision360', 'budget', 'emergencyReserveCurrent'],
+    ['planning', null, 'consultantStartAge'],
+    ['planning', null, 'initialConsultingValue'],
+    ['planning', null, 'phaseDurationYears'],
+    ['planning', null, 'contributionDay'],
+    ['planning', null, 'extraContributions'],
+    ['planning', null, 'annualContributionGoal'],
+    ['planning', null, 'globalSavingsGoal'],
+    ['planning', null, 'extraMonthlyIncome'],
+    ['future', null, 'targetAge'],
+    ['future', null, 'agreedMonthlyContribution'],
+    ['future', null, 'nominalAnnualRate'],
+    ['future', null, 'inflationRate'],
+    ['future', null, 'desiredMonthlyRetirementSpend'],
+    ['profileValidation', null, 'benchmarkRate'],
+    ['protection', null, 'totalDisabilityCoverage'],
+    ['protection', null, 'criticalIllnessCoverage'],
+    ['protection', null, 'surgeriesCoverage'],
+    ['protection', null, 'hospitalDailyCoverage'],
+    ['protection', null, 'temporaryDisabilityCoverage'],
+    ['protection', null, 'dependentEducationYears'],
+    ['protection', null, 'dependentEducationMonthlyAid'],
+    ['protection', null, 'dependentEducationIdealCoverage'],
+    ['succession', null, 'commonAssets'],
+    ['succession', null, 'debts'],
+    ['succession', null, 'vgbl'],
+    ['succession', null, 'lifeInsurance'],
+    ['succession', null, 'childCount'],
+    ['control', null, 'totalContributed'],
+    ['control', null, 'agreedContributionTarget'],
+    ['control', null, 'desiredMonthlyIncome']
+  ].forEach(([group, nestedGroup, field]) => {
+    if (nestedGroup) {
+      input[group][nestedGroup][field] = Math.max(0, toNumber(input[group][nestedGroup][field]));
+      return;
+    }
+
+    input[group][field] = Math.max(0, toNumber(input[group][field]));
+  });
+
+  input.succession.privateAssets = toNumber(input.succession.privateAssets);
+  input.succession.hasChildren = toBoolean(input.succession.hasChildren);
+  input.succession.parentsAlive = toBoolean(input.succession.parentsAlive);
+  input.succession.hasWill = toBoolean(input.succession.hasWill);
+  input.succession.hasLifetimeDonations = toBoolean(input.succession.hasLifetimeDonations);
+  input.succession.hasHolding = toBoolean(input.succession.hasHolding);
+  input.succession.hasOffshore = toBoolean(input.succession.hasOffshore);
+  input.succession.maritalStatus = String(input.succession.maritalStatus ?? '').trim();
+  input.succession.maritalRegime = maritalRegimes.includes(input.succession.maritalRegime)
+    ? input.succession.maritalRegime
+    : defaults.succession.maritalRegime;
+  input.succession.conflictsComment = String(input.succession.conflictsComment ?? '').trim();
+  input.succession.observations = String(input.succession.observations ?? '').trim();
+  input.succession.commonAssetsItems = normalizeSuccessionCommonAssetsItems(
+    input.succession.commonAssetsItems,
+    input.succession.commonAssets
+  );
+  input.succession.commonAssets = sumSuccessionCommonAssetsItems(input.succession.commonAssetsItems);
+
+  input.vision360.budget.workRegime = String(input.vision360.budget.workRegime ?? '').trim();
+  input.vision360.budget.taxDeclaration = String(input.vision360.budget.taxDeclaration ?? '').trim();
+  input.vision360.budget.emergencyReserveHas = toBoolean(input.vision360.budget.emergencyReserveHas);
+  input.vision360.budget.emergencyReserveComment = String(input.vision360.budget.emergencyReserveComment ?? '').trim();
+  input.vision360.budget.hasPGBL = toBoolean(input.vision360.budget.hasPGBL);
+  input.vision360.budget.notes = String(input.vision360.budget.notes ?? '').trim();
+
+  input.planning.lifePhase = String(input.planning.lifePhase ?? '').trim();
+  input.planning.wantsRetirementIncome = toBoolean(input.planning.wantsRetirementIncome);
+  input.planning.extraIncomeExpected = toBoolean(input.planning.extraIncomeExpected);
+  input.planning.otherObjectivesComment = String(input.planning.otherObjectivesComment ?? '').trim();
+
+  input.profileValidation.suggestedProfile = String(input.profileValidation.suggestedProfile ?? '').trim();
+  input.profileValidation.financialCapacity = String(input.profileValidation.financialCapacity ?? '').trim();
+  input.profileValidation.emotionalCapacity = String(input.profileValidation.emotionalCapacity ?? '').trim();
+  input.profileValidation.benchmarkLabel = String(input.profileValidation.benchmarkLabel ?? '').trim();
+  input.profileValidation.term = String(input.profileValidation.term ?? '').trim();
+  input.profileValidation.validated = toBoolean(input.profileValidation.validated);
+  input.profileValidation.notes = String(input.profileValidation.notes ?? '').trim();
+
+  input.protection.policies = normalizeProtectionPolicies(payload.protection ?? {});
+  Object.assign(input.protection, buildLegacyProtectionFieldsFromPolicies(input.protection.policies));
+
+  ['totalDisability', 'criticalIllness', 'surgeries', 'hospitalDaily', 'temporaryDisability', 'dependentEducationInterest'].forEach(
+    (field) => {
+      input.protection[field] = toBoolean(input.protection[field]);
+    }
+  );
+
+  input.control.currentContributionDate = normalizeContributionDate(input.control.currentContributionDate) || defaults.control.currentContributionDate;
+  input.control.monthlyContributions = normalizeMonthlyContributions(input.control.monthlyContributions);
+  input.control.totalContributed = resolveTotalContributed(input.control.totalContributed, input.control.monthlyContributions);
+
+  input.future.perpetuityRate = hasOwnValue(payload.future, 'perpetuityRate') && payload.future?.perpetuityRate != null
+    ? Math.max(0, toNumber(payload.future.perpetuityRate))
+    : null;
+
+  return input;
+}
+
+export function buildPlannerReport(rawInput) {
+  const input = normalizePlannerInput(rawInput);
+  const age = calculateAgeFromBirthDate(input.client.birthDate);
+  const familyMembers = input.family.members.map((member) => ({
+    ...member,
+    age: member.birthDate ? calculateAgeFromBirthDate(member.birthDate) : null
+  }));
+
+  const totalAssets = input.vision360.assets.items.reduce((sum, item) => sum + toNumber(item.value), 0);
+  const totalLiabilities = input.vision360.liabilities.items.reduce((sum, item) => sum + toNumber(item.value), 0);
+  const netWorth = totalAssets - totalLiabilities;
+  const annualIncome = input.vision360.budget.monthlyIncome * 12;
+  const annualExpenses = input.vision360.budget.monthlyExpenses * 12;
+  const monthlyContributionCapacity =
+    input.vision360.budget.monthlyIncome - input.vision360.budget.monthlyExpenses;
+  const investableAssets = totalAssets;
+
+  if (input.future.targetAge <= age) {
+    throw new Error('target age must be greater than current age');
+  }
+
+  const contributionYears = input.future.targetAge - age;
+  const totalMonths = contributionYears * 12;
+  const nominalAnnualRate = input.future.nominalAnnualRate / 100;
+  const inflationAnnualRate = input.future.inflationRate / 100;
+  const realAnnualRate = (1 + nominalAnnualRate) / (1 + inflationAnnualRate) - 1;
+  const monthlyNominalRate = annualToMonthlyRate(nominalAnnualRate);
+  const monthlyRealRate = annualToMonthlyRate(realAnnualRate);
+  const totalInvested = investableAssets + input.future.agreedMonthlyContribution * 12 * contributionYears;
+  const futureNominalValue = calculateFutureValue({
+    presentValue: investableAssets,
+    monthlyContribution: input.future.agreedMonthlyContribution,
+    monthlyRate: monthlyNominalRate,
+    totalMonths
+  });
+  const futureRealValue = calculateFutureValue({
+    presentValue: investableAssets,
+    monthlyContribution: input.future.agreedMonthlyContribution,
+    monthlyRate: monthlyRealRate,
+    totalMonths
+  });
+  const nominalReturn = futureNominalValue - totalInvested;
+  const realReturn = futureRealValue - totalInvested;
+  const accumulationProjection = buildAccumulationProjection({
+    currentAge: age,
+    targetAge: input.future.targetAge,
+    openingBalance: investableAssets,
+    monthlyContribution: input.future.agreedMonthlyContribution,
+    annualRate: nominalAnnualRate
+  });
+
+  const benchmarkRate = input.profileValidation.benchmarkRate / 100;
+  const effectivePerpetuityRatePercent = input.future.perpetuityRate == null
+    ? input.profileValidation.benchmarkRate
+    : input.future.perpetuityRate;
+  const effectivePerpetuityRate = effectivePerpetuityRatePercent / 100;
+  const externalMonthlyIncome = input.planning.extraIncomeExpected ? input.planning.extraMonthlyIncome : 0;
+  const passivePortfolioIncome = (futureRealValue * benchmarkRate) / 12;
+  const combinedMonthlyIncome = passivePortfolioIncome + externalMonthlyIncome;
+  const surplusDeficit = combinedMonthlyIncome - input.future.desiredMonthlyRetirementSpend;
+  const perpetuityProjection = buildPerpetuityProjection({
+    targetAge: input.future.targetAge,
+    endingAge: 95,
+    openingBalance: futureRealValue,
+    annualYieldRate: effectivePerpetuityRate,
+    desiredMonthlySpend: input.future.desiredMonthlyRetirementSpend,
+    externalMonthlyIncome
+  });
+
+  const successionPrivateAssets = input.succession.privateAssets === 0 ? netWorth : input.succession.privateAssets;
+  const spouseShare = input.succession.commonAssets / 2;
+  const grossEstate = successionPrivateAssets + spouseShare;
+  const netEstate = grossEstate - input.succession.debts;
+  const inventoryCost = netEstate > 0 ? netEstate * 0.2 : 0;
+  const offInventoryResources = input.succession.lifeInsurance + input.succession.vgbl;
+  const additionalNeed = Math.max(inventoryCost - offInventoryResources, 0);
+
+  const desiredMonthlyIncome = input.control.desiredMonthlyIncome || input.future.desiredMonthlyRetirementSpend;
+  const disabilityProtectionIdeal = desiredMonthlyIncome / 0.005;
+  const financialFreedomProgress = futureNominalValue > 0 ? (investableAssets / futureNominalValue) * 100 : 0;
+  const agreedContributionTarget = input.control.agreedContributionTarget || input.planning.annualContributionGoal;
+  const monthlyContributionsTotal = input.control.monthlyContributions.reduce(
+    (total, item) => total + toNumber(item?.amount),
+    0
+  );
+  const effectiveTotalContributed = monthlyContributionsTotal > 0 || input.control.totalContributed === 0
+    ? monthlyContributionsTotal
+    : input.control.totalContributed;
+  const contributedProgress =
+    agreedContributionTarget > 0 ? (effectiveTotalContributed / agreedContributionTarget) * 100 : 0;
+  const remainingContributionGap = Math.max(agreedContributionTarget - effectiveTotalContributed, 0);
+  const contributionOverage = Math.max(effectiveTotalContributed - agreedContributionTarget, 0);
+  const protectionLayers = protectionLayerFields.map(({ key, label }) => ({
+    key,
+    label,
+    needed: Boolean(input.control.protectionNeeds[key]),
+    covered: Boolean(input.control.protectionCoverage[key])
+  }));
+  const needCount = protectionLayers.filter((item) => item.needed).length;
+  const coveredCount = protectionLayers.filter((item) => item.covered).length;
+
+  const totalContribution = input.future.agreedMonthlyContribution * 12 * contributionYears;
+  const opportunityCost = futureRealValue - investableAssets - totalContribution;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: {
+      clientName: input.client.name,
+      investorProfile: input.client.investorProfile,
+      retirementAge: input.future.targetAge
+    },
+    modules: {
+      overview: {
+        age,
+        profession: input.client.profession,
+        familyMembers,
+        totalAssets: roundCurrency(totalAssets),
+        totalLiabilities: roundCurrency(totalLiabilities),
+        netWorth: roundCurrency(netWorth),
+        annualIncome: roundCurrency(annualIncome),
+        annualExpenses: roundCurrency(annualExpenses),
+        monthlyContributionCapacity: roundCurrency(monthlyContributionCapacity),
+        emergencyReserveGap: roundCurrency(
+          Math.max(input.vision360.budget.emergencyReserveNeed - input.vision360.budget.emergencyReserveCurrent, 0)
+        )
+      },
+      results: {
+        contributionYears,
+        totalMonths,
+        currentDate: new Date().toISOString(),
+        currentAge: age,
+        targetAge: input.future.targetAge,
+        realAnnualRate: roundCurrency(realAnnualRate * 100),
+        nominalAnnualRate: roundCurrency(input.future.nominalAnnualRate),
+        inflationAnnualRate: roundCurrency(input.future.inflationRate),
+        totalInvested: roundCurrency(totalInvested),
+        currentInvestableAssets: roundCurrency(investableAssets),
+        futureNominalValue: roundCurrency(futureNominalValue),
+        futureRealValue: roundCurrency(futureRealValue),
+        nominalReturn: roundCurrency(nominalReturn),
+        realReturn: roundCurrency(realReturn),
+        accumulationProjection
+      },
+      future: {
+        targetAge: input.future.targetAge,
+        perpetuityRate: roundCurrency(effectivePerpetuityRatePercent),
+        desiredMonthlyRetirementSpend: roundCurrency(input.future.desiredMonthlyRetirementSpend),
+        passivePortfolioIncome: roundCurrency(passivePortfolioIncome),
+        externalMonthlyIncome: roundCurrency(externalMonthlyIncome),
+        combinedMonthlyIncome: roundCurrency(combinedMonthlyIncome),
+        surplusDeficit: roundCurrency(surplusDeficit),
+        futureRealValue: roundCurrency(futureRealValue),
+        perpetuityProjection
+      },
+      succession: {
+        maritalStatus: input.succession.maritalStatus,
+        maritalRegime: input.succession.maritalRegime,
+        hasChildren: input.succession.hasChildren,
+        childCount: input.succession.childCount,
+        parentsAlive: input.succession.parentsAlive,
+        spouseShare: roundCurrency(spouseShare),
+        privateAssets: roundCurrency(successionPrivateAssets),
+        grossEstate: roundCurrency(grossEstate),
+        netEstate: roundCurrency(netEstate),
+        inventoryCost: roundCurrency(inventoryCost),
+        offInventoryResources: roundCurrency(offInventoryResources),
+        additionalNeed: roundCurrency(additionalNeed),
+        lifeInsurance: roundCurrency(input.succession.lifeInsurance),
+        vgbl: roundCurrency(input.succession.vgbl)
+      },
+      control: {
+        disabilityProtectionIdeal: roundCurrency(disabilityProtectionIdeal),
+        disabilityProtectionCurrent: roundCurrency(input.protection.totalDisabilityCoverage),
+        disabilityProtectionGap: roundCurrency(
+          Math.max(disabilityProtectionIdeal - input.protection.totalDisabilityCoverage, 0)
+        ),
+        exposedPatrimony: roundCurrency(netEstate),
+        legacyCoverageCurrent: roundCurrency(offInventoryResources),
+        inventoryAdditionalNeed: roundCurrency(additionalNeed),
+        financialFreedomProgress: roundCurrency(financialFreedomProgress),
+        financialFreedomProgressCapped: roundCurrency(clampPercent(financialFreedomProgress)),
+        contributedProgress: roundCurrency(contributedProgress),
+        contributedProgressCapped: roundCurrency(clampPercent(contributedProgress)),
+        totalContributed: roundCurrency(effectiveTotalContributed),
+        agreedContributionTarget: roundCurrency(agreedContributionTarget),
+        remainingContributionGap: roundCurrency(remainingContributionGap),
+        contributionOverage: roundCurrency(contributionOverage),
+        needCount,
+        coveredCount,
+        monthlyContributions: input.control.monthlyContributions.map((item) => ({
+          month: item.month,
+          amount: roundCurrency(item.amount),
+          date: item.date,
+          savingsGoalId: item.savingsGoalId,
+          entries: (item.entries ?? []).map((entry) => ({
+            id: entry.id,
+            amount: roundCurrency(entry.amount),
+            date: entry.date,
+            savingsGoalId: entry.savingsGoalId
+          }))
+        })),
+        protectionLayers
+      },
+      insights: {
+        retirementAge: input.future.targetAge,
+        desiredMonthlyRetirementSpend: roundCurrency(input.future.desiredMonthlyRetirementSpend),
+        currentNetWorth: roundCurrency(netWorth),
+        totalContribution: roundCurrency(totalContribution),
+        opportunityCost: roundCurrency(opportunityCost),
+        totalAccumulated: roundCurrency(futureRealValue)
+      }
+    }
+  };
+}

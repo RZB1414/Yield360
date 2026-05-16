@@ -23,6 +23,13 @@ Monorepo para uma aplicacao de gestao de financas pessoais e planeamento patrimo
    npx wrangler d1 execute yield-360-db --file migrations/0001_init.sql --remote
    ```
 
+   Para anexos PDF, crie tambem os buckets R2 configurados no Worker:
+
+   ```bash
+   npx wrangler r2 bucket create yield-360-documents
+   npx wrangler r2 bucket create yield-360-documents-preview
+   ```
+
 3. Crie um ficheiro `.env` na raiz a partir de `.env.example` e preencha os valores Cloudflare:
 
    ```bash
@@ -52,4 +59,6 @@ Os scripts de deploy leem o `.env` da raiz quando existir, para alinhar token, a
 
 O `npm run build` da monorepo nao exige credenciais Cloudflare para a API. O passo `@yield-360/api:build` faz apenas um bundle local com `wrangler deploy --dry-run`, por isso funciona em CI do Cloudflare Pages sem `CLOUDFLARE_API_TOKEN`.
 
-Para a API publicada funcionar com D1, o binding `DB` do Worker precisa apontar para uma base existente e o schema SQL precisa estar aplicado. Se a API responder com `503`, confirme o bloco `[[d1_databases]]` em `apps/api/wrangler.toml` e execute a migracao `migrations/0001_init.sql` na base remota.
+Para a API publicada funcionar com D1, o binding `DB` do Worker precisa apontar para uma base existente e o schema SQL precisa estar aplicado. Se a API responder com `503`, confirme o bloco `[[d1_databases]]` em `apps/api/wrangler.toml` e aplique todas as migracoes remotas com `npm run migrate --workspace @yield-360/api`.
+
+Os PDFs de coberturas usam R2 por meio do binding `DOCUMENTS_BUCKET`. Registros antigos com `content_base64` no D1 continuam legiveis, mas novos uploads gravam o binario no bucket e mantem apenas metadados no D1.

@@ -69,6 +69,7 @@ function sumPatrimonialItems(items = []) {
 function isProtectionPolicyFilled(policy) {
   return Boolean(
     String(policy?.coverage ?? policy?.name ?? '').trim() ||
+      String(policy?.company ?? '').trim() ||
       toNumber(policy?.idealValue) > 0 ||
       toNumber(policy?.currentValue ?? policy?.value) > 0 ||
       toNumber(policy?.coverageYears ?? policy?.years) > 0 ||
@@ -285,6 +286,7 @@ export function Vision360Form({
   const [expandedPatrimonialComments, setExpandedPatrimonialComments] = useState({});
   const [expandedSuccessionCommonAssetNotes, setExpandedSuccessionCommonAssetNotes] = useState({});
   const [isSuccessionConflictExpanded, setIsSuccessionConflictExpanded] = useState(false);
+  const [isSuccessionObservationsExpanded, setIsSuccessionObservationsExpanded] = useState(false);
   const [selectedProtectionPreset, setSelectedProtectionPreset] = useState('');
   const [openingProtectionDocumentId, setOpeningProtectionDocumentId] = useState('');
   const balanceMenuRef = useRef(null);
@@ -329,6 +331,8 @@ export function Vision360Form({
   const maritalStatusOptions = buildSelectOptions(maritalStatuses, input.succession.maritalStatus);
   const successionConflictComment = String(input.succession.conflictsComment ?? '');
   const hasSuccessionConflictComment = successionConflictComment.trim().length > 0;
+  const successionObservationsComment = String(input.succession.observations ?? '');
+  const hasSuccessionObservationsComment = successionObservationsComment.trim().length > 0;
 
   function handleAddPatrimonialOption(option) {
     if (option.kind === 'asset') {
@@ -397,6 +401,7 @@ export function Vision360Form({
       currentValue: 0,
       coverageYears: 0,
       monthlyPremium: 0,
+      company: '',
       documentId: null,
       documentName: null
     });
@@ -929,6 +934,20 @@ export function Vision360Form({
                     className={inputClassName(readOnly || !input.planning.extraIncomeExpected)}
                   />
                 </FormField>
+                {input.planning.lifePhase === 'Usufruto' ? (
+                  <FormField label="Taxa de juros real (%)">
+                    <LocalizedNumberInput
+                      value={input.profileValidation.benchmarkRate}
+                      step="0.01"
+                      onChange={(event) => onFieldChange('profileValidation.benchmarkRate', event.target.value, 'number')}
+                      readOnly={readOnly}
+                      fieldPath="profileValidation.benchmarkRate"
+                      clearOnFocus="always"
+                      formatWhileTyping={false}
+                      className={inputClassName(readOnly)}
+                    />
+                  </FormField>
+                ) : null}
               </div>
               <FormField label="Observacoes">
                 <TextAreaInput
@@ -969,9 +988,11 @@ export function Vision360Form({
                 <FormField label="Benchmark referencia para longo prazo">
                   <TextInput value={input.profileValidation.benchmarkLabel} onChange={(event) => onFieldChange('profileValidation.benchmarkLabel', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.benchmarkLabel" />
                 </FormField>
-                <FormField label="Taxa do benchmark (%)">
-                  <LocalizedNumberInput value={input.profileValidation.benchmarkRate} step="0.01" onChange={(event) => onFieldChange('profileValidation.benchmarkRate', event.target.value, 'number')} readOnly={readOnly} fieldPath="profileValidation.benchmarkRate" clearOnFocus className={inputClassName(readOnly)} />
-                </FormField>
+                {input.planning.lifePhase !== 'Usufruto' ? (
+                  <FormField label="Taxa do benchmark (%)">
+                    <LocalizedNumberInput value={input.profileValidation.benchmarkRate} step="0.01" onChange={(event) => onFieldChange('profileValidation.benchmarkRate', event.target.value, 'number')} readOnly={readOnly} fieldPath="profileValidation.benchmarkRate" clearOnFocus="always" formatWhileTyping={false} className={inputClassName(readOnly)} />
+                  </FormField>
+                ) : null}
                 <FormField label="Prazo">
                   <TextInput value={input.profileValidation.term} onChange={(event) => onFieldChange('profileValidation.term', event.target.value)} readOnly={readOnly} fieldPath="profileValidation.term" />
                 </FormField>
@@ -1043,6 +1064,7 @@ export function Vision360Form({
                 const currentValue = policy.currentValue ?? policy.value ?? 0;
                 const coverageYears = policy.coverageYears ?? policy.years ?? 0;
                 const monthlyPremium = policy.monthlyPremium ?? 0;
+                const companyValue = policy.company ?? '';
                 const fileInputId = `protection-policy-file-${policy.id ?? index}`;
                 const documentLabel = policy.documentName || (policy.documentId ? 'PDF salvo para esta cobertura.' : 'Nenhum PDF anexado.');
                 const documentStatus = policy.contentBase64
@@ -1070,7 +1092,7 @@ export function Vision360Form({
                         </button>
                       ) : null}
                     </div>
-                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_repeat(4,minmax(0,160px))_minmax(0,120px)]">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_repeat(5,minmax(0,160px))_minmax(0,120px)]">
                       <FormField label="Cobertura">
                         <TextInput
                           value={coverageValue}
@@ -1121,6 +1143,14 @@ export function Vision360Form({
                           fieldPath={`protection.policies.${index}.monthlyPremium`}
                           clearOnFocus
                           className={inputClassName(readOnly)}
+                        />
+                      </FormField>
+                      <FormField label="Empresa">
+                        <TextInput
+                          value={companyValue}
+                          onChange={(event) => onPolicyFieldChange(index, 'company', event.target.value)}
+                          readOnly={readOnly}
+                          fieldPath={`protection.policies.${index}.company`}
                         />
                       </FormField>
                       <div className="flex flex-col justify-end">
@@ -1352,62 +1382,112 @@ export function Vision360Form({
                 </div>
               </div>
             </div>
-            <FormField label="Potenciais conflitos na sucessao?">
-              {readOnly ? (
-                <div className="min-w-0 space-y-2">
-                  {isSuccessionConflictExpanded ? (
-                    <div className="min-w-0 rounded-xl border border-slate/10 bg-[#f5f7fa] p-3">
-                      <div className="flex min-w-0 items-start justify-between gap-3">
-                        <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate/90" data-field-path="succession.conflictsComment">
+            <div className="md:col-span-2 xl:col-span-4 xl:grid xl:grid-cols-2 xl:items-start xl:gap-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-2">
+                <FormField label="Voce tem testamento?">
+                  <BooleanSelect value={input.succession.hasWill} onChange={(value) => onFieldChange('succession.hasWill', value)} readOnly={readOnly} fieldPath="succession.hasWill" />
+                </FormField>
+                <FormField label="Ja fez ou faz doacoes em vida?">
+                  <BooleanSelect value={input.succession.hasLifetimeDonations} onChange={(value) => onFieldChange('succession.hasLifetimeDonations', value)} readOnly={readOnly} fieldPath="succession.hasLifetimeDonations" />
+                </FormField>
+                <FormField label="Voce tem holding patrimonial?">
+                  <BooleanSelect value={input.succession.hasHolding} onChange={(value) => onFieldChange('succession.hasHolding', value)} readOnly={readOnly} fieldPath="succession.hasHolding" />
+                </FormField>
+                <FormField label="Voce tem negocios offshore?">
+                  <BooleanSelect value={input.succession.hasOffshore} onChange={(value) => onFieldChange('succession.hasOffshore', value)} readOnly={readOnly} fieldPath="succession.hasOffshore" />
+                </FormField>
+                <div className="md:col-span-2">
+                  <FormField label="Observacoes / comentarios">
+                    {readOnly ? (
+                      <div className="min-w-0 space-y-2">
+                        {isSuccessionObservationsExpanded ? (
+                          <div className="min-w-0 rounded-xl border border-slate/10 bg-[#f5f7fa] p-3">
+                            <div className="flex min-w-0 items-start justify-between gap-3">
+                              <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate/90" data-field-path="succession.observations">
+                                {hasSuccessionObservationsComment ? successionObservationsComment : 'Sem observacoes.'}
+                              </p>
+                              {hasSuccessionObservationsComment ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setIsSuccessionObservationsExpanded(false)}
+                                  className="shrink-0 rounded-full border border-slate/15 bg-white px-3 py-1.5 text-xs font-semibold text-slate transition hover:border-slate/30"
+                                >
+                                  Ver menos
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={`${inputClassName(true)} min-w-0 flex h-11 items-center gap-3 overflow-hidden`}>
+                            <span className="min-w-0 flex-1 truncate text-slate/90" data-field-path="succession.observations">
+                              {hasSuccessionObservationsComment ? successionObservationsComment : 'Sem observacoes.'}
+                            </span>
+                            {hasSuccessionObservationsComment ? (
+                              <button
+                                type="button"
+                                onClick={() => setIsSuccessionObservationsExpanded(true)}
+                                className="shrink-0 rounded-full border border-slate/15 bg-white px-3 py-1.5 text-xs font-semibold text-slate transition hover:border-slate/30"
+                              >
+                                Ver mais
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <TextInput value={input.succession.observations} onChange={(event) => onFieldChange('succession.observations', event.target.value)} readOnly={readOnly} fieldPath="succession.observations" />
+                    )}
+                  </FormField>
+                </div>
+              </div>
+              <FormField label="Potenciais conflitos na sucessao?">
+                {readOnly ? (
+                  <div className="min-w-0 space-y-2">
+                    {isSuccessionConflictExpanded ? (
+                      <div className="min-w-0 rounded-xl border border-slate/10 bg-[#f5f7fa] p-3">
+                        <div className="flex min-w-0 items-start justify-between gap-3">
+                          <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate/90" data-field-path="succession.conflictsComment">
+                            {hasSuccessionConflictComment ? successionConflictComment : 'Sem observacoes.'}
+                          </p>
+                          {hasSuccessionConflictComment ? (
+                            <button
+                              type="button"
+                              onClick={() => setIsSuccessionConflictExpanded(false)}
+                              className="shrink-0 rounded-full border border-slate/15 bg-white px-3 py-1.5 text-xs font-semibold text-slate transition hover:border-slate/30"
+                            >
+                              Ver menos
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`${inputClassName(true)} min-w-0 flex h-11 items-center gap-3 overflow-hidden`}>
+                        <span className="min-w-0 flex-1 truncate text-slate/90" data-field-path="succession.conflictsComment">
                           {hasSuccessionConflictComment ? successionConflictComment : 'Sem observacoes.'}
-                        </p>
+                        </span>
                         {hasSuccessionConflictComment ? (
                           <button
                             type="button"
-                            onClick={() => setIsSuccessionConflictExpanded(false)}
+                            onClick={() => setIsSuccessionConflictExpanded(true)}
                             className="shrink-0 rounded-full border border-slate/15 bg-white px-3 py-1.5 text-xs font-semibold text-slate transition hover:border-slate/30"
                           >
-                            Ver menos
+                            Ver mais
                           </button>
                         ) : null}
                       </div>
-                    </div>
-                  ) : (
-                    <div className={`${inputClassName(true)} min-w-0 flex h-11 items-center gap-3 overflow-hidden`}>
-                      <span className="min-w-0 flex-1 truncate text-slate/90" data-field-path="succession.conflictsComment">
-                        {hasSuccessionConflictComment ? successionConflictComment : 'Sem observacoes.'}
-                      </span>
-                      {hasSuccessionConflictComment ? (
-                        <button
-                          type="button"
-                          onClick={() => setIsSuccessionConflictExpanded(true)}
-                          className="shrink-0 rounded-full border border-slate/15 bg-white px-3 py-1.5 text-xs font-semibold text-slate transition hover:border-slate/30"
-                        >
-                          Ver mais
-                        </button>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <TextInput value={input.succession.conflictsComment} onChange={(event) => onFieldChange('succession.conflictsComment', event.target.value)} readOnly={readOnly} fieldPath="succession.conflictsComment" />
-              )}
-            </FormField>
-            <FormField label="Voce tem testamento?">
-              <BooleanSelect value={input.succession.hasWill} onChange={(value) => onFieldChange('succession.hasWill', value)} readOnly={readOnly} fieldPath="succession.hasWill" />
-            </FormField>
-            <FormField label="Ja fez ou faz doacoes em vida?">
-              <BooleanSelect value={input.succession.hasLifetimeDonations} onChange={(value) => onFieldChange('succession.hasLifetimeDonations', value)} readOnly={readOnly} fieldPath="succession.hasLifetimeDonations" />
-            </FormField>
-            <FormField label="Voce tem holding patrimonial?">
-              <BooleanSelect value={input.succession.hasHolding} onChange={(value) => onFieldChange('succession.hasHolding', value)} readOnly={readOnly} fieldPath="succession.hasHolding" />
-            </FormField>
-            <FormField label="Voce tem negocios offshore?">
-              <BooleanSelect value={input.succession.hasOffshore} onChange={(value) => onFieldChange('succession.hasOffshore', value)} readOnly={readOnly} fieldPath="succession.hasOffshore" />
-            </FormField>
-            <FormField label="Observacoes / comentarios">
-              <TextInput value={input.succession.observations} onChange={(event) => onFieldChange('succession.observations', event.target.value)} readOnly={readOnly} fieldPath="succession.observations" />
-            </FormField>
+                    )}
+                  </div>
+                ) : (
+                  <TextAreaInput
+                    value={input.succession.conflictsComment}
+                    onChange={(event) => onFieldChange('succession.conflictsComment', event.target.value)}
+                    readOnly={readOnly}
+                    fieldPath="succession.conflictsComment"
+                    className="xl:min-h-[176px]"
+                  />
+                )}
+              </FormField>
+            </div>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { formatLocalizedNumber, parseLocalizedNumber } from '../lib/formatters.js';
 
 function formatTypingValue(rawValue, fractionDigits, allowBlank) {
@@ -24,7 +24,8 @@ export function LocalizedNumberInput({
   fractionDigits = 2,
   className,
   allowBlank = false,
-  clearOnFocus = false
+  clearOnFocus = false,
+  formatWhileTyping = true
 }) {
   const isLocked = readOnly || disabled;
   const [isFocused, setIsFocused] = useState(false);
@@ -37,13 +38,13 @@ export function LocalizedNumberInput({
     return formatLocalizedNumber(value, fractionDigits);
   });
 
-  function formatDisplay(nextValue) {
+  const formatDisplay = useCallback((nextValue) => {
     if (allowBlank && (nextValue === '' || nextValue == null)) {
       return '';
     }
 
     return formatLocalizedNumber(nextValue, fractionDigits);
-  }
+  }, [allowBlank, fractionDigits]);
 
   function formatEditableValue(nextValue) {
     if (allowBlank && (nextValue === '' || nextValue == null)) {
@@ -58,7 +59,7 @@ export function LocalizedNumberInput({
     if (!isFocused) {
       setDisplayValue(formatDisplay(value));
     }
-  }, [allowBlank, fractionDigits, isFocused, value]);
+  }, [formatDisplay, isFocused, value]);
 
   useEffect(() => {
     if (!isFocused) {
@@ -77,7 +78,9 @@ export function LocalizedNumberInput({
 
   function handleChange(event) {
     const nextValue = event.target.value;
-    const formattedValue = formatTypingValue(nextValue, fractionDigits, allowBlank);
+    const formattedValue = formatWhileTyping
+      ? formatTypingValue(nextValue, fractionDigits, allowBlank)
+      : nextValue;
 
     setDisplayValue(formattedValue);
     emitChange(formattedValue);
@@ -88,13 +91,18 @@ export function LocalizedNumberInput({
       setIsFocused(true);
 
       if (clearOnFocus && !hasClearedOnFocus) {
+        const shouldAlwaysClear = clearOnFocus === 'always';
         const normalizedCurrentValue = parseLocalizedNumber(value);
 
-        if (normalizedCurrentValue === '' || Number(normalizedCurrentValue) === 0) {
+        if (shouldAlwaysClear || normalizedCurrentValue === '' || Number(normalizedCurrentValue) === 0) {
           setDisplayValue('');
-          emitChange('');
-        } else {
+          if (formatWhileTyping) {
+            emitChange('');
+          }
+        } else if (formatWhileTyping) {
           setDisplayValue(formatEditableValue(value));
+        } else {
+          setDisplayValue(String(value ?? ''));
         }
 
         setHasClearedOnFocus(true);

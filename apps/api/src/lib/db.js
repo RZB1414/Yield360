@@ -18,6 +18,37 @@ function parseJson(value, fallback) {
   }
 }
 
+function toNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function resolveGlobalSavingsGoal(input = {}) {
+  const savingsGoals = input.planning?.savingsGoals;
+
+  if (Array.isArray(savingsGoals)) {
+    return savingsGoals.reduce((total, item) => total + Math.max(0, toNumber(item?.amount)), 0);
+  }
+
+  return Math.max(0, toNumber(input.planning?.globalSavingsGoal));
+}
+
+function resolveGlobalSavingsContributed(input = {}) {
+  const monthlyContributions = input.control?.monthlyContributions;
+
+  if (!Array.isArray(monthlyContributions)) {
+    return Math.max(0, toNumber(input.control?.totalContributed));
+  }
+
+  return monthlyContributions.reduce((monthlyTotal, month) => {
+    if (Array.isArray(month?.entries) && month.entries.length > 0) {
+      return monthlyTotal + month.entries.reduce((entryTotal, entry) => entryTotal + Math.max(0, toNumber(entry?.amount)), 0);
+    }
+
+    return monthlyTotal + Math.max(0, toNumber(month?.amount));
+  }, 0);
+}
+
 function toStoredProfile(row) {
   if (!row) {
     return null;
@@ -46,6 +77,12 @@ function toProfileListItem(row) {
     return null;
   }
 
+  const globalSavingsGoal = resolveGlobalSavingsGoal(input);
+  const globalSavingsContributed = resolveGlobalSavingsContributed(input);
+  const globalSavingsProgress = globalSavingsGoal > 0
+    ? Math.min((globalSavingsContributed / globalSavingsGoal) * 100, 100)
+    : 0;
+
   return {
     id: row.id,
     clientName: row.full_name ?? input.client?.name ?? '',
@@ -55,7 +92,10 @@ function toProfileListItem(row) {
     updatedAt: row.updated_at ?? input.updatedAt ?? null,
     currentNetWorth: Number(report.modules?.overview?.netWorth ?? 0),
     futureRealValue: Number(report.modules?.results?.futureRealValue ?? report.modules?.future?.futureRealValue ?? 0),
-    retirementAge: Number(report.summary?.retirementAge ?? report.modules?.results?.targetAge ?? 0)
+    retirementAge: Number(report.summary?.retirementAge ?? report.modules?.results?.targetAge ?? 0),
+    globalSavingsGoal,
+    globalSavingsContributed,
+    globalSavingsProgress
   };
 }
 
@@ -188,16 +228,20 @@ export async function uploadDocument(database, doc) {
         plan_id,
         file_name,
         content_type,
+        object_key,
+        object_size,
         content_base64,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       doc.id,
       doc.planId,
       doc.fileName,
       doc.contentType,
-      doc.contentBase64,
+      doc.objectKey ?? null,
+      doc.objectSize ?? null,
+      doc.contentBase64 ?? '',
       doc.createdAt
     )
     .run();
@@ -214,6 +258,8 @@ export async function getDocumentById(database, documentId) {
         plan_id as planId,
         file_name as fileName,
         content_type as contentType,
+        object_key as objectKey,
+        object_size as objectSize,
         content_base64 as contentBase64,
         created_at as createdAt
       FROM documents
@@ -245,6 +291,8 @@ export async function listDocumentsByPlanId(database, planId) {
         plan_id as planId,
         file_name as fileName,
         content_type as contentType,
+        object_key as objectKey,
+        object_size as objectSize,
         created_at as createdAt
       FROM documents
       WHERE plan_id = ?

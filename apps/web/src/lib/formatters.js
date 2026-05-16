@@ -6,7 +6,10 @@ export function formatCurrency(value) {
 }
 
 export function formatPercent(value) {
-  return `${Number(value ?? 0).toFixed(2)}%`;
+  return `${new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number(value ?? 0))}%`;
 }
 
 export function formatPlainNumber(value, fractionDigits = 0) {

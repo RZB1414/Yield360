@@ -119,20 +119,20 @@ export function ResultsShowcase({ input, results, onFieldChange, readOnly = fals
                   <p className="text-xs leading-snug text-slate/60">Valor total investido</p>
                   <p className={valueClassName('md')}>{formatTableNumber(results.totalInvested)}</p>
                 </div>
-                <div className={metricCardClassName('dark')}>
-                  <p className="text-xs leading-snug text-white/70">Idade atual</p>
-                  <p className={valueClassName('sm', 'light')}>{formatPlainNumber(results.currentAge)}</p>
+                <div className={metricCardClassName('light')}>
+                  <p className="text-xs leading-snug text-slate/60">Idade atual</p>
+                  <p className={valueClassName('sm')}>{formatPlainNumber(results.currentAge)}</p>
                 </div>
-                <div className={metricCardClassName('dark')}>
-                  <p className="text-xs leading-snug text-white/70">Idade objetivo</p>
-                  <p className={valueClassName('sm', 'light')}>{formatPlainNumber(results.targetAge)}</p>
+                <div className={metricCardClassName('light')}>
+                  <p className="text-xs leading-snug text-slate/60">Idade objetivo</p>
+                  <p className={valueClassName('sm')}>{formatPlainNumber(results.targetAge)}</p>
                 </div>
                 <div className={metricCardClassName('light')}>
                   <p className="text-xs leading-snug text-slate/60">Tempo de contribuicao</p>
                   <p className={valueClassName('sm')}>{formatPlainNumber(results.contributionYears)} anos</p>
                 </div>
                 <div
-                  className={`${metricCardClassName('warm')} ${!readOnly ? 'cursor-pointer transition hover:border-[#e0a06d]/40' : ''}`}
+                  className={`${metricCardClassName('light')} ${!readOnly ? 'cursor-pointer transition hover:border-[#e0a06d]/40' : ''}`}
                   onClick={() => {
                     if (!readOnly && !isEditingInflation) {
                       setTempInflation(input?.future?.inflationRate ?? 6);
@@ -177,11 +177,11 @@ export function ResultsShowcase({ input, results, onFieldChange, readOnly = fals
                   <p className="text-xs leading-snug text-slate/60">Taxa nominal (a.a.)</p>
                   <p className={valueClassName('sm')}>{formatPercent(results.nominalAnnualRate)}</p>
                 </div>
-                <div className={metricCardClassName('success')}>
+                <div className={metricCardClassName('light')}>
                   <p className="text-xs leading-snug text-slate/60">Taxa real (a.a.)</p>
                   <p className={valueClassName('sm')}>{formatPercent(results.realAnnualRate)}</p>
                 </div>
-                <div className={metricCardClassName('warm')}>
+                <div className={metricCardClassName('light')}>
                   <p className="text-xs leading-snug text-slate/60">Valor nominal final</p>
                   <p className={valueClassName('lg')}>{formatTableNumber(results.futureNominalValue)}</p>
                 </div>
@@ -189,7 +189,7 @@ export function ResultsShowcase({ input, results, onFieldChange, readOnly = fals
                   <p className="text-xs leading-snug text-slate/60">Valor real final</p>
                   <p className={valueClassName('lg')}>{formatTableNumber(results.futureRealValue)}</p>
                 </div>
-                <div className={metricCardClassName('accent')}>
+                <div className={metricCardClassName('light')}>
                   <p className="text-xs leading-snug text-slate/60">Retorno nominal</p>
                   <p className={valueClassName('md')}>{formatTableNumber(results.nominalReturn)}</p>
                 </div>

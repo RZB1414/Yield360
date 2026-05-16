@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { AreaTrendChart } from './AreaTrendChart.jsx';
+import { LocalizedNumberInput } from './LocalizedNumberInput.jsx';
 import { SectionCard } from './SectionCard.jsx';
-import { formatPercent, formatTableNumber } from '../lib/formatters.js';
+import { formatTableNumber } from '../lib/formatters.js';
 
 function statCard(label, value, tone = 'light', large = false) {
   const tones = {
@@ -37,7 +39,75 @@ function introPanel(kicker, title, description) {
   );
 }
 
-export function FuturePanel({ future }) {
+function EditablePerpetuityRateCard({ value, onApply, isSaving = false }) {
+  const [draftValue, setDraftValue] = useState(() => (value == null ? '' : String(value)));
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setDraftValue(value == null ? '' : String(value));
+  }, [value]);
+
+  const numericDraftValue = Number(draftValue);
+  const canApply = !isSaving && draftValue !== '' && Number.isFinite(numericDraftValue) && numericDraftValue >= 0 && numericDraftValue !== Number(value ?? 0);
+
+  async function handleApply() {
+    if (!canApply) {
+      if (draftValue === '' || !Number.isFinite(numericDraftValue) || numericDraftValue < 0) {
+        setError('Informe uma taxa de juros real valida.');
+      }
+
+      return;
+    }
+
+    setError('');
+
+    try {
+      await onApply?.(numericDraftValue);
+    } catch (applyError) {
+      setError(applyError?.message || 'Falha ao salvar a taxa de juros real.');
+    }
+  }
+
+  return (
+    <div className="min-w-0 overflow-hidden rounded-[18px] border border-[#173d5d]/10 bg-white px-4 py-3 shadow-[0_12px_24px_rgba(23,61,93,0.06)]">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs leading-snug text-slate/60">Taxa de Juros real</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#355f9b]">Apenas no grafico</p>
+      </div>
+      <div className="mt-3 grid gap-3">
+        <LocalizedNumberInput
+          value={draftValue}
+          onChange={(event) => {
+            setDraftValue(event.target.value);
+
+            if (error) {
+              setError('');
+            }
+          }}
+          step="0.01"
+          fieldPath="future.perpetuityRate"
+          clearOnFocus="always"
+          formatWhileTyping={false}
+          className="w-full rounded-[14px] border border-[#173d5d]/12 bg-white px-3 py-2 font-display text-xl leading-tight text-[#173d5d] outline-none transition focus:border-[#355f9b]/40 focus:ring-4 focus:ring-[#355f9b]/10 md:text-2xl xl:text-[1.55rem]"
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[11px] text-slate/55">Essa alteracao afeta somente o grafico de patrimonio na perpetuidade.</p>
+          <button
+            type="button"
+            onClick={handleApply}
+            disabled={!canApply}
+            className="rounded-full border border-[#173d5d]/15 bg-[#f4f7fb] px-3 py-1.5 text-xs font-semibold text-[#173d5d] transition hover:border-[#173d5d]/30 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSaving ? 'Salvando grafico...' : 'Atualizar grafico'}
+          </button>
+        </div>
+        {error ? <p className="text-xs font-medium text-[#c24d2c]">{error}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+export function FuturePanel({ future, onPersistPerpetuityRate, isPersistingPerpetuityRate = false }) {
   if (!future) {
     return null;
   }
@@ -64,11 +134,17 @@ export function FuturePanel({ future }) {
                   <p className="text-base font-semibold text-[#173d5d]">Renda e taxa</p>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#355f9b]">Base mensal</p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
-                  {statCard('Taxa de Juros real', formatPercent(future.perpetuityRate), 'success')}
-                  {statCard('Renda passiva potencial (PL)', formatTableNumber(future.passivePortfolioIncome), 'success', true)}
-                  {statCard('INSS + Outras receitas', formatTableNumber(future.externalMonthlyIncome), 'dark')}
-                  {statCard('Renda passiva potencial (PL + INSS)', formatTableNumber(future.combinedMonthlyIncome), 'slate', true)}
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1.06fr)_minmax(0,0.94fr)]">
+                  <EditablePerpetuityRateCard
+                    value={future.perpetuityRate}
+                    onApply={onPersistPerpetuityRate}
+                    isSaving={isPersistingPerpetuityRate}
+                  />
+                  <div className="grid gap-3 content-start">
+                    {statCard('Renda passiva potencial (PL)', formatTableNumber(future.passivePortfolioIncome), 'success', true)}
+                    {statCard('INSS + Outras receitas', formatTableNumber(future.externalMonthlyIncome), 'light')}
+                    {statCard('Renda passiva potencial (PL + Outras receitas)', formatTableNumber(future.combinedMonthlyIncome), 'slate', true)}
+                  </div>
                 </div>
               </div>
             </div>
@@ -80,7 +156,7 @@ export function FuturePanel({ future }) {
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#355f9b]">Comparativo</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
-                  {statCard('Objetivo Gasto Mensal', formatTableNumber(future.desiredMonthlyRetirementSpend), 'dark', true)}
+                  {statCard('Objetivo Gasto Mensal', formatTableNumber(future.desiredMonthlyRetirementSpend), 'light', true)}
                   {statCard('Superavit / Deficit', formatTableNumber(future.surplusDeficit), future.surplusDeficit >= 0 ? 'success' : 'accent', true)}
                 </div>
               </div>

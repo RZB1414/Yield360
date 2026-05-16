@@ -1,6 +1,7 @@
 {
   "name": "yield-360",
   "private": true,
+  "type": "module",
   "packageManager": "npm@10.9.2",
   "workspaces": [
     "apps/*",
@@ -10,12 +11,18 @@
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "test": "turbo run test",
     "deploy": "npm run deploy:web",
     "deploy:api": "npm run deploy --workspace @yield-360/api",
     "deploy:web": "npm run deploy --workspace @yield-360/web",
     "deploy:all": "npm run deploy:api && npm run deploy:web"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.6.0",
     "turbo": "^2.4.4"
   }
 }

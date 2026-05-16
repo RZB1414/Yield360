@@ -1,4 +1,10 @@
-import { plannerSections } from '@yield-360/shared';
+import {
+	buildDefaultMonthlyContributions,
+	contributionMonthLabels,
+	normalizeSavingsGoals,
+	plannerSections,
+	sumSavingsGoals
+} from '@yield-360/shared';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ExecutiveDashboard } from '../components/ExecutiveDashboard.jsx';
@@ -18,6 +24,160 @@ const fieldTabMap = {
 	'planning.consultantStartAge': 'visao360',
 	'future.targetAge': 'visao360'
 };
+
+function normalizeKey(value) {
+	return String(value ?? '')
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.trim()
+		.toLowerCase();
+}
+
+const contributionMonthIndexByKey = contributionMonthLabels.reduce((indexes, month, index) => {
+	indexes[normalizeKey(month)] = index;
+	return indexes;
+}, {});
+
+function buildLocalDateInputValue() {
+	const today = new Date();
+	const year = String(today.getFullYear());
+	const month = String(today.getMonth() + 1).padStart(2, '0');
+	const day = String(today.getDate()).padStart(2, '0');
+
+	return `${year}-${month}-${day}`;
+}
+
+function isValidContributionDate(value) {
+	const normalizedValue = String(value ?? '').trim();
+
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
+		return false;
+	}
+
+	const [year, month, day] = normalizedValue.split('-').map(Number);
+	const parsedDate = new Date(year, month - 1, day);
+
+	return (
+		parsedDate.getFullYear() === year &&
+		parsedDate.getMonth() === month - 1 &&
+		parsedDate.getDate() === day
+	);
+}
+
+function normalizeStoredContributionDate(value) {
+	return isValidContributionDate(value) ? String(value).trim() : '';
+}
+
+function normalizeContributionDate(value, fallback = buildLocalDateInputValue()) {
+	return normalizeStoredContributionDate(value) || fallback;
+}
+
+function resolveContributionMonthIndex(value) {
+	return Number(normalizeContributionDate(value).slice(5, 7)) - 1;
+}
+
+function resolveMonthIndexFromLabel(value) {
+	const normalizedValue = normalizeKey(value);
+
+	if (normalizedValue in contributionMonthIndexByKey) {
+		return contributionMonthIndexByKey[normalizedValue];
+	}
+
+	const placeholderMatch = normalizedValue.match(/^mes\s+(\d+)$/i);
+
+	if (!placeholderMatch) {
+		return null;
+	}
+
+	const placeholderIndex = Number(placeholderMatch[1]) - 1;
+	return placeholderIndex >= 0 && placeholderIndex < contributionMonthLabels.length ? placeholderIndex : null;
+}
+
+function resolveContributionMonthIndexFromItem(item, fallbackIndex) {
+	const monthIndexFromDate = isValidContributionDate(item?.date)
+		? Number(String(item.date).slice(5, 7)) - 1
+		: null;
+
+	if (monthIndexFromDate != null) {
+		return monthIndexFromDate;
+	}
+
+	const monthIndexFromLabel = resolveMonthIndexFromLabel(item?.month);
+
+	if (monthIndexFromLabel != null) {
+		return monthIndexFromLabel;
+	}
+
+	return fallbackIndex >= 0 && fallbackIndex < contributionMonthLabels.length ? fallbackIndex : null;
+}
+
+function normalizeContributionEntries(items = []) {
+	const normalizedItems = buildDefaultMonthlyContributions();
+
+	if (!Array.isArray(items)) {
+		return normalizedItems;
+	}
+
+	items.forEach((item, index) => {
+		const monthIndex = resolveContributionMonthIndexFromItem(item, index);
+
+		if (monthIndex == null) {
+			return;
+		}
+
+		const fallbackDate = normalizeStoredContributionDate(item?.date);
+		const fallbackGoalId = String(item?.savingsGoalId ?? '').trim();
+		const sourceEntries = Array.isArray(item?.entries) && item.entries.length > 0
+			? item.entries
+			: Math.max(0, Number(item?.amount ?? 0)) > 0 || fallbackDate
+				? [{ id: item?.id, amount: item?.amount, date: fallbackDate, savingsGoalId: fallbackGoalId }]
+				: [];
+		const nextEntries = sourceEntries
+			.map((entry, entryIndex) => ({
+				id: String(entry?.id ?? `${contributionMonthLabels[monthIndex]}-${entryIndex}`).trim() || `${contributionMonthLabels[monthIndex]}-${entryIndex}`,
+				amount: Math.max(0, Number(entry?.amount ?? 0)),
+				date: normalizeStoredContributionDate(entry?.date) || fallbackDate,
+				savingsGoalId: String(entry?.savingsGoalId ?? fallbackGoalId).trim()
+			}))
+			.filter((entry) => entry.amount > 0 || entry.date || entry.savingsGoalId);
+
+		if (nextEntries.length === 0) {
+			return;
+		}
+
+		const currentItem = normalizedItems[monthIndex];
+		const entries = [...(currentItem.entries ?? []), ...nextEntries];
+		const amount = entries.reduce((total, entry) => total + Number(entry?.amount ?? 0), 0);
+		const latestEntry = entries.at(-1);
+
+		normalizedItems[monthIndex] = {
+			month: contributionMonthLabels[monthIndex],
+			amount,
+			date: latestEntry?.date ?? '',
+			savingsGoalId: latestEntry?.savingsGoalId ?? '',
+			entries
+		};
+	});
+
+	return normalizedItems;
+}
+
+function sumMonthlyContributionAmounts(items = []) {
+	return items.reduce((total, item) => total + Number(item?.amount ?? 0), 0);
+}
+
+function createContributionEntry({ amount, date, savingsGoalId }) {
+	const id = typeof crypto !== 'undefined' && crypto.randomUUID
+		? crypto.randomUUID()
+		: `contribution-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+	return {
+		id,
+		amount: Math.max(0, Number(amount ?? 0)),
+		date: normalizeContributionDate(date),
+		savingsGoalId: String(savingsGoalId ?? '').trim()
+	};
+}
 
 function calculateAgeFromBirthDate(birthDateValue) {
 	if (!birthDateValue) {
@@ -64,12 +224,37 @@ function sumSuccessionCommonAssetsItems(items = []) {
 	return items.reduce((total, item) => total + Number(item?.value ?? 0), 0);
 }
 
-function applyDerivedInputRules(input) {
+function syncNominalAnnualRate(input) {
 	const nextState = structuredClone(input);
+	const realRate = Number(nextState.profileValidation.benchmarkRate ?? 0) / 100;
+	const inflationRate = Number(nextState.future.inflationRate ?? 0) / 100;
+	const nominalRate = ((1 + realRate) * (1 + inflationRate) - 1) * 100;
+
+	nextState.future.nominalAnnualRate = Number.isFinite(nominalRate) ? nominalRate : 0;
+
+	return nextState;
+}
+
+function applyDerivedInputRules(input) {
+	let nextState = structuredClone(input);
 	const annualContributionGoal = Number(nextState.future.agreedMonthlyContribution ?? 0) * 12 + Number(nextState.planning.extraContributions ?? 0);
+	const normalizedContributionEntries = normalizeContributionEntries(nextState.control?.monthlyContributions);
+	const contributionTotal = sumMonthlyContributionAmounts(normalizedContributionEntries);
+	const normalizedSavingsGoals = normalizeSavingsGoals(nextState.planning?.savingsGoals);
 
 	nextState.planning.annualContributionGoal = Number.isFinite(annualContributionGoal) ? annualContributionGoal : 0;
+	nextState.planning.savingsGoals = normalizedSavingsGoals;
+	nextState.planning.globalSavingsGoal = sumSavingsGoals(normalizedSavingsGoals);
 	nextState.succession.commonAssets = sumSuccessionCommonAssetsItems(nextState.succession.commonAssetsItems ?? []);
+	nextState.control.currentContributionDate = normalizeContributionDate(nextState.control?.currentContributionDate);
+	nextState.control.monthlyContributions = normalizedContributionEntries;
+	nextState.control.totalContributed = contributionTotal > 0 || Number(nextState.control?.totalContributed ?? 0) === 0
+		? contributionTotal
+		: Number(nextState.control.totalContributed ?? 0);
+
+	if (nextState.planning.lifePhase === 'Usufruto' && Number(nextState.profileValidation.benchmarkRate ?? 0) <= 0) {
+		nextState.profileValidation.benchmarkRate = 4;
+	}
 
 	if (!nextState.vision360.budget.emergencyReserveHas) {
 		nextState.vision360.budget.emergencyReserveCurrent = 0;
@@ -83,7 +268,7 @@ function applyDerivedInputRules(input) {
 		nextState.planning.extraMonthlyIncome = 0;
 	}
 
-	return nextState;
+	return syncNominalAnnualRate(nextState);
 }
 
 function validatePlannerInput(input) {
@@ -199,12 +384,14 @@ export function InputDataPage() {
 	const planId = searchParams.get('planId') ?? '';
 	const [input, setInput] = useState(() => createEmptyPlannerInput());
 	const [report, setReport] = useState(null);
-	const [health, setHealth] = useState(null);
+	const [planCreatedAt, setPlanCreatedAt] = useState('');
 	const [activePlanId, setActivePlanId] = useState(planId);
 	const [activeTab, setActiveTab] = useState(plannerSections[0].id);
 	const [loading, setLoading] = useState(true);
 	const [analyzing, setAnalyzing] = useState(false);
 	const [saving, setSaving] = useState(false);
+	const [savingContribution, setSavingContribution] = useState(false);
+	const [savingGoals, setSavingGoals] = useState(false);
 	const [error, setError] = useState('');
 	const [fieldErrors, setFieldErrors] = useState({});
 
@@ -216,16 +403,15 @@ export function InputDataPage() {
 			setError('');
 
 			try {
-				const healthData = await getHealth();
+				await getHealth();
 
 				if (cancelled) {
 					return;
 				}
 
-				setHealth(healthData);
-
 				if (!planId) {
 					setActivePlanId('');
+					setPlanCreatedAt('');
 					setInput(createEmptyPlannerInput());
 					setReport(null);
 					return;
@@ -235,6 +421,7 @@ export function InputDataPage() {
 
 				if (!cancelled) {
 					setActivePlanId(data.planId);
+					setPlanCreatedAt(data.createdAt ?? '');
 					setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
 					setReport(data.report);
 				}
@@ -290,7 +477,8 @@ export function InputDataPage() {
 				path === 'client.investorProfile' || 
 				path === 'profileValidation.suggestedProfile' || 
 				path === 'future.inflationRate' ||
-				path === 'profileValidation.benchmarkRate'
+				path === 'profileValidation.benchmarkRate' ||
+				path === 'planning.lifePhase'
 			) {
 				const isProfileUpdate = path === 'client.investorProfile' || path === 'profileValidation.suggestedProfile';
 				const profileValue = isProfileUpdate ? value : nextState.client.investorProfile;
@@ -332,14 +520,11 @@ export function InputDataPage() {
 					if (isProfileUpdate) {
 						nextState = updateNestedValue(nextState, 'profileValidation.emotionalCapacity', config.emotionalCapacity);
 						nextState = updateNestedValue(nextState, 'profileValidation.benchmarkLabel', config.benchmarkLabel);
-						nextState = updateNestedValue(nextState, 'profileValidation.benchmarkRate', config.benchmarkRate, 'number');
+						if (nextState.planning.lifePhase !== 'Usufruto') {
+							nextState = updateNestedValue(nextState, 'profileValidation.benchmarkRate', config.benchmarkRate, 'number');
+						}
 						nextState = updateNestedValue(nextState, 'profileValidation.term', config.term);
 					}
-
-					const realRate = Number(nextState.profileValidation.benchmarkRate ?? config.benchmarkRate) / 100;
-					const inflationRate = Number(nextState.future.inflationRate ?? 0) / 100;
-					const nominalRate = ((1 + realRate) * (1 + inflationRate) - 1) * 100;
-					nextState = updateNestedValue(nextState, 'future.nominalAnnualRate', nominalRate, 'number');
 				}
 			}
 
@@ -560,6 +745,7 @@ export function InputDataPage() {
 
 	function handleCloseClient() {
 		setActivePlanId('');
+		setPlanCreatedAt('');
 		setInput(createEmptyPlannerInput());
 		setReport(null);
 		setFieldErrors({});
@@ -581,6 +767,47 @@ export function InputDataPage() {
 		}
 	}
 
+	async function persistPlanInput(nextInput) {
+		const inputToSave = structuredClone(nextInput);
+		const pendingUploads = [];
+
+		if (inputToSave.protection?.policies) {
+			inputToSave.protection.policies.forEach((policy, index) => {
+				if (policy.contentBase64) {
+					pendingUploads.push({ index, name: policy.documentName, base64: policy.contentBase64 });
+				}
+				delete policy.contentBase64;
+			});
+		}
+
+		let data = activePlanId ? await updatePlan(activePlanId, inputToSave) : await savePlan(inputToSave);
+		const currentPlanId = data.planId;
+
+		if (pendingUploads.length > 0) {
+			let uploadedAny = false;
+
+			for (const upload of pendingUploads) {
+				try {
+					const docInfo = await uploadPlanDocument(currentPlanId, {
+						file_name: upload.name,
+						content_type: 'application/pdf',
+						content_base64: upload.base64
+					});
+					inputToSave.protection.policies[upload.index].documentId = docInfo.id || docInfo.data?.id;
+					uploadedAny = true;
+				} catch (uploadError) {
+					console.error('Falha ao fazer upload da apolice', uploadError);
+				}
+			}
+
+			if (uploadedAny) {
+				data = await updatePlan(currentPlanId, inputToSave);
+			}
+		}
+
+		return data;
+	}
+
 	async function handleSave() {
 		const nextFieldErrors = validatePlannerInput(input);
 
@@ -595,44 +822,12 @@ export function InputDataPage() {
 		setFieldErrors({});
 
 		try {
-			const inputToSave = structuredClone(input);
-			const pendingUploads = [];
-
-			if (inputToSave.protection?.policies) {
-				inputToSave.protection.policies.forEach((policy, index) => {
-					if (policy.contentBase64) {
-						pendingUploads.push({ index, name: policy.documentName, base64: policy.contentBase64 });
-					}
-					delete policy.contentBase64;
-				});
-			}
-
 			const isEditingExistingPlan = Boolean(activePlanId);
-			let data = activePlanId ? await updatePlan(activePlanId, inputToSave) : await savePlan(inputToSave);
+			const data = await persistPlanInput(input);
 			const currentPlanId = data.planId;
 
-			if (pendingUploads.length > 0) {
-				let uploadedAny = false;
-				for (const upload of pendingUploads) {
-					try {
-						const docInfo = await uploadPlanDocument(currentPlanId, {
-							file_name: upload.name,
-							content_type: 'application/pdf',
-							content_base64: upload.base64
-						});
-						inputToSave.protection.policies[upload.index].documentId = docInfo.id || docInfo.data?.id;
-						uploadedAny = true;
-					} catch (err) {
-						console.error("Falha ao fazer upload da apolice", err);
-					}
-				}
-
-				if (uploadedAny) {
-					data = await updatePlan(currentPlanId, inputToSave);
-				}
-			}
-
 			setActivePlanId(currentPlanId);
+			setPlanCreatedAt(data.createdAt ?? planCreatedAt);
 			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
 			setReport(data.report);
 			setFieldErrors({});
@@ -658,6 +853,295 @@ export function InputDataPage() {
 		}
 	}
 
+	async function handlePersistGoals(goals) {
+		if (saving || analyzing || loading || savingGoals) {
+			return;
+		}
+
+		setSavingGoals(true);
+		setError('');
+
+		try {
+			const nextInput = applyDerivedInputRules(
+				hydratePlannerInput({
+					...input,
+					planning: {
+						...(input.planning ?? {}),
+						savingsGoals: goals
+					}
+				})
+			);
+			const data = await persistPlanInput(nextInput);
+
+			setActivePlanId(data.planId);
+			setPlanCreatedAt(data.createdAt ?? planCreatedAt);
+			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
+			setReport(data.report);
+			setFieldErrors({});
+
+			if (!activePlanId && (!planId || planId !== data.planId)) {
+				setSearchParams({ planId: data.planId });
+			}
+		} catch (requestError) {
+			const nextFieldErrorsFromRequest = mapRequestErrorToFieldErrors(requestError.message);
+
+			if (Object.keys(nextFieldErrorsFromRequest).length > 0) {
+				applyValidationErrors(nextFieldErrorsFromRequest);
+			}
+
+			setError(requestError.message);
+		} finally {
+			setSavingGoals(false);
+		}
+	}
+
+	async function handlePersistContribution({ amount, date, savingsGoalId }) {
+		if (saving || analyzing || loading || savingContribution) {
+			return;
+		}
+
+		const previousInput = input;
+		const previousPlanCreatedAt = planCreatedAt;
+		setSavingContribution(true);
+		setError('');
+
+		try {
+			const normalizedDate = normalizeContributionDate(date);
+			const nextMonthIndex = resolveContributionMonthIndex(normalizedDate);
+			const normalizedContributionEntries = normalizeContributionEntries(input.control?.monthlyContributions);
+			const nextAmount = Math.max(0, Number(amount ?? 0));
+			const nextEntry = createContributionEntry({ amount: nextAmount, date: normalizedDate, savingsGoalId });
+			const currentMonth = normalizedContributionEntries[nextMonthIndex] ?? {
+				month: contributionMonthLabels[nextMonthIndex],
+				amount: 0,
+				date: '',
+				savingsGoalId: '',
+				entries: []
+			};
+			const nextMonthEntries = [...(currentMonth.entries ?? []), nextEntry];
+			const nextMonthAmount = nextMonthEntries.reduce((total, entry) => total + Number(entry?.amount ?? 0), 0);
+
+			normalizedContributionEntries[nextMonthIndex] = {
+				month: contributionMonthLabels[nextMonthIndex],
+				amount: nextMonthAmount,
+				date: normalizedDate,
+				savingsGoalId: String(savingsGoalId ?? '').trim(),
+				entries: nextMonthEntries
+			};
+
+			const nextInput = applyDerivedInputRules(
+				hydratePlannerInput({
+					...input,
+					control: {
+						...(input.control ?? {}),
+						currentContributionDate: normalizedDate,
+						monthlyContributions: normalizedContributionEntries,
+						totalContributed: sumMonthlyContributionAmounts(normalizedContributionEntries)
+					}
+				})
+			);
+			const optimisticPlanCreatedAt = planCreatedAt || new Date().toISOString();
+
+			setInput(nextInput);
+			setPlanCreatedAt(optimisticPlanCreatedAt);
+
+			const data = await persistPlanInput(nextInput);
+			setActivePlanId(data.planId);
+			setPlanCreatedAt(data.createdAt ?? optimisticPlanCreatedAt);
+			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
+			setReport(data.report);
+			setFieldErrors({});
+
+			if (!activePlanId && (!planId || planId !== data.planId)) {
+				setSearchParams({ planId: data.planId });
+			}
+		} catch (requestError) {
+			setInput((currentState) => applyDerivedInputRules(
+				hydratePlannerInput({
+					...currentState,
+					control: {
+						...(currentState.control ?? {}),
+						currentContributionDate: previousInput.control?.currentContributionDate,
+						monthlyContributions: previousInput.control?.monthlyContributions,
+						totalContributed: previousInput.control?.totalContributed
+					}
+				})
+			));
+			setPlanCreatedAt(previousPlanCreatedAt);
+			const nextFieldErrorsFromRequest = mapRequestErrorToFieldErrors(requestError.message);
+
+			if (Object.keys(nextFieldErrorsFromRequest).length > 0) {
+				applyValidationErrors(nextFieldErrorsFromRequest);
+			}
+
+			setError(requestError.message);
+		} finally {
+			setSavingContribution(false);
+		}
+	}
+
+	async function handleUpdateContribution(monthIndex, contributionId, updates) {
+		if (saving || analyzing || loading || savingContribution) {
+			return;
+		}
+
+		const previousInput = input;
+		const previousPlanCreatedAt = planCreatedAt;
+		setSavingContribution(true);
+		setError('');
+
+		try {
+			const normalizedContributionEntries = normalizeContributionEntries(input.control?.monthlyContributions);
+			const currentMonth = normalizedContributionEntries[monthIndex];
+			const currentEntry = currentMonth?.entries?.find((entry) => entry.id === contributionId);
+
+			if (!currentEntry) {
+				return;
+			}
+
+			const updatedEntry = {
+				...currentEntry,
+				amount: Math.max(0, Number(updates?.amount ?? currentEntry.amount ?? 0)),
+				date: normalizeContributionDate(updates?.date ?? currentEntry.date),
+				savingsGoalId: String(updates?.savingsGoalId ?? currentEntry.savingsGoalId ?? '').trim()
+			};
+			const nextMonthIndex = resolveContributionMonthIndex(updatedEntry.date);
+			const entriesWithoutCurrent = (currentMonth.entries ?? []).filter((entry) => entry.id !== contributionId);
+			const currentLatestEntry = entriesWithoutCurrent.at(-1);
+
+			normalizedContributionEntries[monthIndex] = {
+				month: contributionMonthLabels[monthIndex],
+				amount: entriesWithoutCurrent.reduce((total, entry) => total + Number(entry?.amount ?? 0), 0),
+				date: currentLatestEntry?.date ?? '',
+				savingsGoalId: currentLatestEntry?.savingsGoalId ?? '',
+				entries: entriesWithoutCurrent
+			};
+
+			const targetMonth = normalizedContributionEntries[nextMonthIndex] ?? {
+				month: contributionMonthLabels[nextMonthIndex],
+				amount: 0,
+				date: '',
+				savingsGoalId: '',
+				entries: []
+			};
+			const targetEntries = [...(targetMonth.entries ?? []), updatedEntry];
+			const targetLatestEntry = targetEntries.at(-1);
+
+			normalizedContributionEntries[nextMonthIndex] = {
+				month: contributionMonthLabels[nextMonthIndex],
+				amount: targetEntries.reduce((total, entry) => total + Number(entry?.amount ?? 0), 0),
+				date: targetLatestEntry?.date ?? '',
+				savingsGoalId: targetLatestEntry?.savingsGoalId ?? '',
+				entries: targetEntries
+			};
+
+			const nextInput = applyDerivedInputRules(
+				hydratePlannerInput({
+					...input,
+					control: {
+						...(input.control ?? {}),
+						currentContributionDate: updatedEntry.date,
+						monthlyContributions: normalizedContributionEntries,
+						totalContributed: sumMonthlyContributionAmounts(normalizedContributionEntries)
+					}
+				})
+			);
+
+			setInput(nextInput);
+
+			const data = await persistPlanInput(nextInput);
+			setActivePlanId(data.planId);
+			setPlanCreatedAt(data.createdAt ?? planCreatedAt);
+			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
+			setReport(data.report);
+			setFieldErrors({});
+		} catch (requestError) {
+			setInput((currentState) => applyDerivedInputRules(
+				hydratePlannerInput({
+					...currentState,
+					control: {
+						...(currentState.control ?? {}),
+						currentContributionDate: previousInput.control?.currentContributionDate,
+						monthlyContributions: previousInput.control?.monthlyContributions,
+						totalContributed: previousInput.control?.totalContributed
+					}
+				})
+			));
+			setPlanCreatedAt(previousPlanCreatedAt);
+			setError(requestError.message);
+		} finally {
+			setSavingContribution(false);
+		}
+	}
+
+	async function handleDeleteContribution(monthIndex, contributionId) {
+		if (saving || analyzing || loading || savingContribution) {
+			return;
+		}
+
+		const previousInput = input;
+		const previousPlanCreatedAt = planCreatedAt;
+		setSavingContribution(true);
+		setError('');
+
+		try {
+			const normalizedContributionEntries = normalizeContributionEntries(input.control?.monthlyContributions);
+			const currentMonth = normalizedContributionEntries[monthIndex];
+
+			if (!currentMonth) {
+				return;
+			}
+
+			const nextMonthEntries = (currentMonth.entries ?? []).filter((entry) => entry.id !== contributionId);
+			const nextMonthAmount = nextMonthEntries.reduce((total, entry) => total + Number(entry?.amount ?? 0), 0);
+			const latestEntry = nextMonthEntries.at(-1);
+
+			normalizedContributionEntries[monthIndex] = {
+				month: contributionMonthLabels[monthIndex],
+				amount: nextMonthAmount,
+				date: latestEntry?.date ?? '',
+				savingsGoalId: latestEntry?.savingsGoalId ?? '',
+				entries: nextMonthEntries
+			};
+
+			const nextInput = applyDerivedInputRules(
+				hydratePlannerInput({
+					...input,
+					control: {
+						...(input.control ?? {}),
+						monthlyContributions: normalizedContributionEntries,
+						totalContributed: sumMonthlyContributionAmounts(normalizedContributionEntries)
+					}
+				})
+			);
+
+			setInput(nextInput);
+
+			const data = await persistPlanInput(nextInput);
+			setActivePlanId(data.planId);
+			setPlanCreatedAt(data.createdAt ?? planCreatedAt);
+			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
+			setReport(data.report);
+			setFieldErrors({});
+		} catch (requestError) {
+			setInput((currentState) => applyDerivedInputRules(
+				hydratePlannerInput({
+					...currentState,
+					control: {
+						...(currentState.control ?? {}),
+						currentContributionDate: previousInput.control?.currentContributionDate,
+						monthlyContributions: previousInput.control?.monthlyContributions,
+						totalContributed: previousInput.control?.totalContributed
+					}
+				})
+			));
+			setPlanCreatedAt(previousPlanCreatedAt);
+			setError(requestError.message);
+		} finally {
+			setSavingContribution(false);
+		}
+	}
+
 	async function handleUpdateLastContact() {
 		if (!activePlanId) {
 			return;
@@ -678,6 +1162,7 @@ export function InputDataPage() {
 			const data = await updatePlan(activePlanId, nextInput);
 
 			setActivePlanId(data.planId);
+			setPlanCreatedAt(data.createdAt ?? planCreatedAt);
 			setInput(applyDerivedInputRules(hydratePlannerInput(data.input)));
 			setReport(data.report);
 		} catch (requestError) {
@@ -747,7 +1232,22 @@ export function InputDataPage() {
 			return <SuccessionPlanner input={input} succession={succession} onFieldChange={handleFieldChange} />;
 		}
 
-		return <ExecutiveDashboard input={input} control={control} succession={succession} />;
+		return (
+			<ExecutiveDashboard
+				input={input}
+				control={control}
+				succession={succession}
+				planCreatedAt={planCreatedAt}
+				readOnly={false}
+				onFieldChange={handleFieldChange}
+				onSaveContribution={handlePersistContribution}
+				onUpdateContribution={handleUpdateContribution}
+				onDeleteContribution={handleDeleteContribution}
+				isPersistingContribution={savingContribution}
+				onSaveGoals={handlePersistGoals}
+				isSavingGoals={savingGoals}
+			/>
+		);
 	}
 
 	return (

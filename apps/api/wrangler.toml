@@ -15,3 +15,8 @@ binding = "DB"
 database_name = "yield-360-db"
 database_id = "1d27c451-5ef5-43ba-827e-ac7b4abe1674"
 preview_database_id = "1d27c451-5ef5-43ba-827e-ac7b4abe1674"
+
+[[r2_buckets]]
+binding = "DOCUMENTS_BUCKET"
+bucket_name = "yield-360-documents"
+preview_bucket_name = "yield-360-documents-preview"
